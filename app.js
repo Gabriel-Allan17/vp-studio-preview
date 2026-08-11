@@ -1,4 +1,4 @@
-import { mountBodyMap, validateBodyMapCatalog } from "./body-map.js?v=14";
+import { mountBodyMap, validateBodyMapCatalog } from "./body-map.js?v=20";
 
 const icon = (name) => `<svg aria-hidden="true"><use href="#icon-${name}"></use></svg>`;
 
@@ -188,9 +188,9 @@ const experienceLoginCopy = {
     instruction: "Entre para acompanhar seu treino e sua evolução.",
   },
   terracota: {
-    eyebrow: "ACESSO AO STUDIO",
-    title: "Sua rotina começa aqui.",
-    instruction: "Sua rotina de treinos em um só lugar.",
+    eyebrow: "",
+    title: "Acesso do aluno",
+    instruction: "",
   },
   editorial: {
     eyebrow: "VP STUDIO · ACESSO",
@@ -325,11 +325,9 @@ function syncAccessRoleQuery(role) {
 function initialiseExperience() {
   const params = new URLSearchParams(window.location.search);
   const requested = params.get("experience") || params.get("login");
-  const stored = localStorage.getItem("vp-experience-v13");
-  const initial = experienceNames[requested] ? requested : (experienceNames[stored] ? stored : "editorial");
-  setExperience(initial, { persist: Boolean(requested || stored) });
-  if (experienceNames[requested]) showLoginScreen();
-  else showExperiencePicker("login");
+  const initial = experienceNames[requested] ? requested : "terracota";
+  setExperience(initial, { persist: true });
+  showLoginScreen();
 }
 
 function setAccessRole(role, options = {}) {
@@ -347,6 +345,9 @@ function setAccessRole(role, options = {}) {
   });
   loginScreen.dataset.selectedRole = role;
   selectedRoleLabel.textContent = accessRoles[role].label;
+  if (state.experience === "terracota") {
+    loginTitle.textContent = role === "coach" ? "Acesso do professor" : "Acesso do aluno";
+  }
   loginIdentity.value = accessRoles[role].identity;
   loginPassword.value = "homologacao";
   if (options.syncQuery !== false) syncAccessRoleQuery(role);

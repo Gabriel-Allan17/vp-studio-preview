@@ -1,14 +1,14 @@
-const CACHE_NAME = "vp-studio-homologacao-v14";
+const CACHE_NAME = "vp-studio-homologacao-v20";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./login-options.html",
-  "./styles.css?v=14",
-  "./experience-tokens.css?v=14",
+  "./styles.css?v=20",
+  "./experience-tokens.css?v=20",
   "./login-options.css",
-  "./login-options.css?v=14",
-  "./app.js?v=14",
-  "./body-map.js?v=14",
+  "./login-options.css?v=20",
+  "./app.js?v=20",
+  "./body-map.js?v=20",
   "./manifest.webmanifest",
   "./offline.html",
   "./assets/brand/vp-logo.png",

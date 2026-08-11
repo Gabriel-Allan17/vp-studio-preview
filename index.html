@@ -1,18 +1,18 @@
 <!doctype html>
-<html lang="pt-BR" data-experience="editorial" data-theme="dark">
+<html lang="pt-BR" data-experience="terracota" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#14232c" />
+    <meta name="theme-color" content="#181d1b" />
     <meta name="description" content="Aplicativo de homologação do Vinicius Pontes Studio." />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="VP Studio" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="assets/icons/icon-192.png" />
-    <link rel="stylesheet" href="styles.css?v=14" />
-    <link rel="stylesheet" href="experience-tokens.css?v=14" />
-    <link rel="stylesheet" href="login-options.css?v=14" id="experience-picker-styles" />
+    <link rel="stylesheet" href="styles.css?v=20" />
+    <link rel="stylesheet" href="experience-tokens.css?v=20" />
+    <link rel="stylesheet" href="login-options.css?v=20" id="experience-picker-styles" />
     <title>VP Studio</title>
   </head>
   <body>
@@ -100,7 +100,7 @@
     </svg>
 
     <main id="app">
-      <section class="experience-screen is-active" id="experience-screen" aria-labelledby="experience-title">
+      <section class="experience-screen" id="experience-screen" aria-labelledby="experience-title" hidden>
         <div class="concept-page">
           <header class="concept-header">
             <div class="concept-topbar">
@@ -243,29 +243,10 @@
 
               <div class="phone-frame">
                 <section class="login-preview login-preview--terracota" aria-label="Prévia do conceito Cobre Urbano">
-                  <header class="clay-topbar">
-                    <span class="clay-mark"><img src="assets/brand/vp-logo-gradient.png" alt="VP Studio" /></span>
-                    <span class="clay-support">ACESSO SEGURO</span>
-                  </header>
-
                   <div class="clay-panel">
-                    <div class="clay-message">
-                      <span class="screen-label">ACESSO AO STUDIO</span>
-                      <h2>Sua rotina<br />começa aqui.</h2>
-                      <p>Disciplina supera motivação.</p>
-                    </div>
-                    <div class="role-cards" role="group" aria-label="Tipo de acesso">
-                      <button class="role-card is-active" type="button" data-preview-experience="terracota" data-preview-role="student" aria-pressed="true">
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM5 20c.8-3.3 3.2-5 7-5s6.2 1.7 7 5" /></svg>
-                        <b>Sou aluno</b>
-                        <i aria-hidden="true">✓</i>
-                      </button>
-                      <button class="role-card" type="button" data-preview-experience="terracota" data-preview-role="coach" aria-pressed="false">
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V8l8-4 8 4v11M8 19v-5h8v5" /></svg>
-                        <b>Sou professor</b>
-                        <i aria-hidden="true">✓</i>
-                      </button>
-                    </div>
+                    <header class="clay-topbar">
+                      <span class="clay-mark"><img src="assets/brand/vp-logo-gradient.png" alt="VP Studio" /></span>
+                    </header>
                     <label class="clay-field">
                       <span>E-mail ou celular</span>
                       <span class="clay-input">Digite seu acesso</span>
@@ -274,9 +255,15 @@
                       <span>Senha</span>
                       <span class="clay-input clay-input--password">Sua senha <b>Exibir</b></span>
                     </label>
-                    <span class="clay-forgot">Esqueci minha senha</span>
-                    <span class="clay-primary">Continuar <b aria-hidden="true">→</b></span>
+                    <div class="clay-assist">
+                      <span>✓ Lembrar meu perfil</span>
+                      <span class="clay-forgot">Esqueci minha senha</span>
+                    </div>
+                    <span class="clay-primary">Entrar <b aria-hidden="true">→</b></span>
                     <p class="clay-account">Primeira vez por aqui? <strong>Criar conta</strong></p>
+                    <button class="clay-professor" type="button" data-preview-experience="terracota" data-preview-role="coach">
+                      Área do professor <b aria-hidden="true">→</b>
+                    </button>
                   </div>
                 </section>
               </div>
@@ -297,7 +284,7 @@
         </div>
       </section>
 
-      <section class="login-screen" id="login-screen" aria-labelledby="login-title" hidden>
+      <section class="login-screen is-active" id="login-screen" aria-labelledby="login-title">
         <aside class="login-story" aria-label="Apresentação do studio">
           <div class="login-story__brand">
             <img src="assets/brand/vp-logo-gradient.png" alt="Vinicius Pontes Studio" />
@@ -332,6 +319,9 @@
           </header>
 
           <div class="login-panel__body">
+            <div class="cobre-login-logo">
+              <img src="assets/brand/vp-logo-gradient.png" alt="Vinicius Pontes Studio" />
+            </div>
             <div class="login-heading">
               <span class="overline">ACESSO AO STUDIO</span>
               <h2 id="login-title" tabindex="-1">Boas-vindas.</h2>
@@ -354,6 +344,11 @@
             <p class="role-selection-summary" aria-live="polite">
               <span>Perfil selecionado</span>
               <strong id="selected-role-label">Aluno</strong>
+            </p>
+
+            <p class="cobre-access-status" aria-live="polite">
+              <svg aria-hidden="true"><use href="#icon-users"></use></svg>
+              <strong>Área do professor</strong>
             </p>
 
             <form class="login-form" id="login-form">
@@ -382,6 +377,17 @@
             <button class="button button--secondary button--full" type="button" data-route="account">
               Criar minha conta
             </button>
+
+            <div class="cobre-role-access">
+              <button class="cobre-role-access__button cobre-role-access__button--coach" type="button" data-access-role="coach">
+                Área do professor
+                <svg aria-hidden="true"><use href="#icon-arrow"></use></svg>
+              </button>
+              <button class="cobre-role-access__button cobre-role-access__button--student" type="button" data-access-role="student">
+                <svg aria-hidden="true"><use href="#icon-arrow"></use></svg>
+                Voltar para acesso do aluno
+              </button>
+            </div>
           </div>
         </section>
       </section>
@@ -1053,6 +1059,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="app.js?v=14"></script>
+    <script type="module" src="app.js?v=20"></script>
   </body>
 </html>

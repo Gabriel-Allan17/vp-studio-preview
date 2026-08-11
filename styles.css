@@ -908,6 +908,12 @@ textarea {
   display: none;
 }
 
+.cobre-access-status,
+.cobre-role-access,
+.cobre-login-logo {
+  display: none;
+}
+
 .login-form {
   display: grid;
   gap: 16px;
