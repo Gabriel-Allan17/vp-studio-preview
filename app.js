@@ -1,4 +1,4 @@
-import { mountBodyMap, validateBodyMapCatalog } from "./body-map.js?v=21";
+import { mountBodyMap, validateBodyMapCatalog } from "./body-map.js?v=22";
 
 const icon = (name) => `<svg aria-hidden="true"><use href="#icon-${name}"></use></svg>`;
 
@@ -945,6 +945,52 @@ function runDiagnostics() {
   }
 }
 
+function initialiseCreativePreview() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("creative") !== "1") return;
+
+  document.documentElement.classList.add("creative-preview-runtime");
+  const screenRoutes = {
+    "student-home": ["student", "home"],
+    "student-agenda": ["student", "agenda"],
+    "student-workout": ["student", "workout"],
+    "student-evolution": ["student", "evolution"],
+    "student-profile": ["student", "profile"],
+    "coach-home": ["coach", "home"],
+    "coach-students": ["coach", "students"],
+    "coach-agenda": ["coach", "coach-agenda"],
+    "coach-training": ["coach", "training"],
+    "coach-reports": ["coach", "reports"],
+  };
+
+  const showScreen = ({ screenId = "student-home", sourceScreenId = screenId } = {}) => {
+    const resolvedId = screenRoutes[sourceScreenId] ? sourceScreenId : "student-home";
+    if (sourceScreenId === "shared-login") {
+      setAccessRole("student", { syncQuery: false });
+      showLoginScreen();
+      return { screenId, sourceScreenId, surface: "login" };
+    }
+
+    const [role, route] = screenRoutes[resolvedId];
+    setAccessRole(role, { syncQuery: false });
+    enterWorkspace(route);
+    return { screenId, sourceScreenId: resolvedId, surface: "workspace" };
+  };
+
+  window.vpCreativePreview = {
+    showScreen,
+    getActiveSurface() {
+      return workspaceShell.hidden
+        ? loginScreen
+        : document.querySelector(".app-view.is-active");
+    },
+  };
+
+  const initialScreen = params.get("screen") || "student-home";
+  showScreen({ screenId: initialScreen, sourceScreenId: initialScreen });
+  window.parent.postMessage({ type: "vp-creative-preview-ready" }, window.location.origin);
+}
+
 initialiseTheme();
 initialiseExperience();
 setAccessRole(
@@ -956,3 +1002,4 @@ setAccessRole(
 wireStaticControls();
 setupPwa();
 runDiagnostics();
+initialiseCreativePreview();

@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#202522" />
     <meta name="description" content="Editor visual do aplicativo Vinicius Pontes Studio." />
     <link rel="icon" href="assets/icons/icon-192.png" />
-    <link rel="stylesheet" href="creative.css?v=1" />
+    <link rel="stylesheet" href="creative.css?v=9" />
     <title>VP Studio | Modo Criativo</title>
   </head>
   <body>
@@ -87,15 +87,21 @@
 
             <label class="zoom-control">
               <span>Zoom</span>
-              <input type="range" id="zoom-control" min="70" max="110" step="5" value="90" />
-              <output id="zoom-output">90%</output>
+              <input type="range" id="zoom-control" min="40" max="100" step="5" value="65" />
+              <output id="zoom-output">65%</output>
             </label>
           </header>
 
           <div class="canvas-stage" id="canvas-stage" data-device="mobile">
             <div class="device-shell" id="device-shell">
               <div class="device-camera" aria-hidden="true"></div>
-              <article class="app-preview" id="app-preview" aria-label="Tela editável do aplicativo">
+              <iframe
+                class="original-app-preview"
+                id="original-app-preview"
+                title="Aplicativo VP Studio editável"
+                src="index.html?creative=1&amp;experience=terracota&amp;screen=student-home"
+              ></iframe>
+              <article class="app-preview legacy-app-preview" id="app-preview" aria-hidden="true" hidden>
                 <header class="preview-header">
                   <img src="assets/brand/vp-logo-gradient.png" alt="VP Studio" />
                   <div>
@@ -207,6 +213,6 @@
     </div>
 
     <div class="creative-toast" id="creative-toast" role="status" aria-live="polite"></div>
-    <script type="module" src="creative.js?v=1"></script>
+    <script type="module" src="creative.js?v=9"></script>
   </body>
 </html>

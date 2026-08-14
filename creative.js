@@ -1,5 +1,5 @@
 const STORAGE_KEY = "vp-studio-creative-v1";
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 4;
 const MAX_HISTORY = 80;
 
 let sequence = 0;
@@ -131,6 +131,7 @@ function makeBlock(type, overrides = {}) {
 function makeScreen(id, name, role, blocks, options = {}) {
   return {
     id,
+    sourceScreenId: options.sourceScreenId || id,
     name,
     navLabel: options.navLabel || name,
     role,
@@ -146,9 +147,11 @@ function createDefaultProject() {
     activeScreenId: "student-home",
     selectedBlockId: null,
     viewport: "mobile",
-    zoom: 90,
+    zoom: 65,
+    zoomManual: false,
     roleFilter: "all",
     inspectorTab: "content",
+    fidelity: { edits: {}, additions: {}, orders: {} },
     screens: [
       makeScreen("shared-login", "Entrada", "shared", [
         makeBlock("hero", { kicker: "VINICIUS PONTES STUDIO", title: "Acesso ao Studio", text: "Entre com seu e-mail ou celular.", align: "center", density: "spacious" }),
@@ -233,6 +236,10 @@ let redoStack = [];
 let draggedBlockId = null;
 let saveTimer = null;
 let toastTimer = null;
+let frameReady = false;
+let frameSelection = null;
+let frameEditSnapshot = null;
+let draggedFrameSection = null;
 
 const elements = {
   projectTitle: document.querySelector("#project-title"),
@@ -247,6 +254,7 @@ const elements = {
   previewTitle: document.querySelector("#preview-screen-title"),
   previewContent: document.querySelector("#preview-content"),
   previewNavigation: document.querySelector("#preview-navigation"),
+  originalPreview: document.querySelector("#original-app-preview"),
   canvasStage: document.querySelector("#canvas-stage"),
   deviceShell: document.querySelector("#device-shell"),
   inspectorBody: document.querySelector("#inspector-body"),
@@ -275,6 +283,7 @@ function selectedBlock() {
 function historySnapshot() {
   return clone({
     screens: state.screens,
+    fidelity: state.fidelity,
     activeScreenId: state.activeScreenId,
     selectedBlockId: state.selectedBlockId,
   });
@@ -282,6 +291,7 @@ function historySnapshot() {
 
 function applySnapshot(snapshot) {
   state.screens = clone(snapshot.screens);
+  state.fidelity = clone(snapshot.fidelity || { edits: {}, additions: {}, orders: {} });
   state.activeScreenId = snapshot.activeScreenId;
   state.selectedBlockId = snapshot.selectedBlockId;
   ensureValidSelection();
@@ -361,7 +371,7 @@ function renderScreenList() {
           <button class="screen-item ${screen.id === state.activeScreenId ? "is-active" : ""}" type="button" data-screen-id="${escapeHTML(screen.id)}">
             <span class="screen-item__index">${String(index).padStart(2, "0")}</span>
             <span class="screen-item__copy"><strong>${escapeHTML(screen.name)}</strong><small>${screen.showInNav ? "Na navegação" : "Fora da navegação"}</small></span>
-            <span class="screen-item__count">${screen.blocks.length}</span>
+            <span class="screen-item__count">${screen.blocks.length + Object.keys(state.fidelity?.additions?.[screen.id] || {}).length}</span>
           </button>`;
       }).join("")}
     `;
@@ -448,6 +458,213 @@ function renderBlock(block) {
     </section>`;
 }
 
+function fidelityBucket(name, screenId = activeScreen()?.id) {
+  state.fidelity ||= { edits: {}, additions: {}, orders: {} };
+  state.fidelity[name] ||= {};
+  if (screenId) state.fidelity[name][screenId] ||= name === "orders" ? [] : {};
+  return screenId ? state.fidelity[name][screenId] : state.fidelity[name];
+}
+
+function originalBlockMarkup(type, id) {
+  const commonStart = `<section class="section-block creative-added-section" data-creative-added-id="${escapeHTML(id)}">`;
+  const heading = (kicker, title) => `<header class="section-title"><div><span class="overline">${kicker}</span><h3>${title}</h3></div></header>`;
+  const blocks = {
+    hero: `<header class="page-intro creative-added-section" data-creative-added-id="${escapeHTML(id)}"><div><span class="overline">NOVA SEÇÃO</span><h2>Título da seção</h2><p>Edite este texto diretamente na prévia.</p></div></header>`,
+    wellness: `<button class="wellness-hero creative-added-section" data-creative-added-id="${escapeHTML(id)}" type="button"><span class="wellness-hero__status"><i></i><small>CHECK-IN</small><strong>Pendente</strong></span><span class="wellness-hero__copy"><strong>Como você está hoje?</strong><span>Sono, energia, recuperação e desconfortos.</span></span><span class="wellness-hero__action"><b>Responder</b></span></button>`,
+    metrics: `${commonStart}${heading("RESUMO", "Indicadores")}<div class="metric-strip"><article><span>Frequência</span><strong>86%</strong><small>12 de 14 aulas</small></article><article><span>Carga total</span><strong>+8,2%</strong><small>no período</small></article><article><span>PSR média</span><strong>7,6</strong><small>últimos 14 dias</small></article></div></section>`,
+    chart: `${commonStart}${heading("EVOLUÇÃO", "Histórico")}<article class="card chart-card chart-card--wide"><div class="bar-chart"><i style="--bar:48%"></i><i style="--bar:62%"></i><i style="--bar:56%"></i><i style="--bar:76%"></i><i style="--bar:68%"></i><i style="--bar:84%"></i><i style="--bar:79%"></i></div></article></section>`,
+    schedule: `${commonStart}${heading("AGENDA", "Próximos horários")}<div class="schedule-list"><article class="schedule-item"><time>18:30</time><span class="schedule-item__line"></span><div><span class="status-pill status-pill--confirmed">Confirmada</span><h3>Treino individual</h3><p>Vinicius Pontes · 50 min</p></div></article></div></section>`,
+    image: `${commonStart}${heading("IMAGEM", "Referência visual")}<article class="card"><img src="assets/brand/vp-logo-gradient.png" alt="VP Studio" style="display:block;max-width:180px;margin:auto" /></article></section>`,
+    form: `${commonStart}${heading("FORMULÁRIO", "Informações importantes")}<div class="settings-list"><button type="button"><span><strong>Campo ou pergunta</strong><small>Descrição para preenchimento</small></span></button><button type="button"><span><strong>Outro campo</strong><small>Informação complementar</small></span></button></div></section>`,
+    shortcuts: `${commonStart}${heading("ACESSO RÁPIDO", "Atalhos")}<div class="notice-grid"><button class="notice-card" type="button"><strong>Meu treino</strong><p>Abrir treino atual</p></button><button class="notice-card notice-card--quiet" type="button"><strong>Agenda</strong><p>Consultar horários</p></button></div></section>`,
+  };
+  return blocks[type] || `${commonStart}${heading("CONTEÚDO", blockCatalog[type]?.name || "Nova seção")}<article class="card"><h3>Título do conteúdo</h3><p>Edite este texto diretamente na prévia.</p></article></section>`;
+}
+
+function editableFrameNodes(surface) {
+  return [...surface.querySelectorAll("h1,h2,h3,p,strong,small,time,.overline,.card-kicker,.daily-line")]
+    .filter((node) => !node.children.length && node.textContent.trim() && !node.closest("svg, style, script"));
+}
+
+function frameSections(surface) {
+  const selector = [
+    ":scope > .page-intro", ":scope > .wellness-hero", ":scope > .dashboard-grid",
+    ":scope > .section-block", ":scope > .date-strip", ":scope > .schedule-list",
+    ":scope > .workout-summary", ":scope > .exercise-list", ":scope > .chart-grid",
+    ":scope > .profile-layout", ":scope > .coach-metrics", ":scope > .coach-dashboard-grid",
+    ":scope > .search-field", ":scope > .student-table", ":scope > .coach-calendar",
+    ":scope > .builder-layout", ":scope > .creative-added-section",
+  ].join(",");
+  return [...surface.querySelectorAll(selector)];
+}
+
+function persistFrameOrder(surface, screenId) {
+  state.fidelity.orders[screenId] = frameSections(surface).map((section) => section.dataset.creativeSectionKey);
+}
+
+function refreshOriginalEditing() {
+  const screen = activeScreen();
+  const frameWindow = elements.originalPreview.contentWindow;
+  const bridge = frameWindow?.vpCreativePreview;
+  const doc = elements.originalPreview.contentDocument;
+  const surface = bridge?.getActiveSurface?.();
+  if (!screen || !doc || !surface) return;
+
+  let helperStyle = doc.querySelector("#vp-creative-helper-style");
+  if (!helperStyle) {
+    helperStyle = doc.createElement("style");
+    helperStyle.id = "vp-creative-helper-style";
+    helperStyle.textContent = `
+      [data-creative-editable] { cursor: text; border-radius: 3px; }
+      [data-creative-editable]:hover { outline: 1px dashed #a45f42; outline-offset: 3px; }
+      [data-creative-editable]:focus, [data-creative-editable].is-creative-selected { outline: 2px solid #a45f42; outline-offset: 3px; }
+      [data-creative-section-key] { cursor: grab; }
+      [data-creative-section-key].is-creative-dragging { opacity: .48; }
+      [data-creative-section-key].is-creative-drop { outline: 2px dashed #a45f42; outline-offset: 5px; }
+    `;
+    doc.head.append(helperStyle);
+  }
+
+  const additions = fidelityBucket("additions", screen.id);
+  surface.querySelectorAll("[data-creative-added-id]").forEach((node) => node.remove());
+  Object.values(additions).forEach((addition) => {
+    if (surface.querySelector(`[data-creative-added-id="${addition.id}"]`)) return;
+    const template = doc.createElement("template");
+    template.innerHTML = addition.html || originalBlockMarkup(addition.type, addition.id);
+    surface.append(template.content.firstElementChild);
+  });
+
+  const sections = frameSections(surface);
+  sections.forEach((section, index) => {
+    section.dataset.creativeSectionKey ||= section.dataset.creativeAddedId ? `added-${section.dataset.creativeAddedId}` : `section-${index}`;
+    section.draggable = true;
+    section.ondragstart = () => {
+      draggedFrameSection = section;
+      frameEditSnapshot = historySnapshot();
+      section.classList.add("is-creative-dragging");
+    };
+    section.ondragover = (event) => {
+      if (!draggedFrameSection || draggedFrameSection === section) return;
+      event.preventDefault();
+      section.classList.add("is-creative-drop");
+    };
+    section.ondragleave = () => section.classList.remove("is-creative-drop");
+    section.ondrop = (event) => {
+      if (!draggedFrameSection || draggedFrameSection === section) return;
+      event.preventDefault();
+      const after = event.clientY > section.getBoundingClientRect().top + section.getBoundingClientRect().height / 2;
+      surface.insertBefore(draggedFrameSection, after ? section.nextSibling : section);
+      section.classList.remove("is-creative-drop");
+      persistFrameOrder(surface, screen.id);
+    };
+    section.ondragend = () => {
+      section.classList.remove("is-creative-dragging");
+      frameSections(surface).forEach((item) => item.classList.remove("is-creative-drop"));
+      if (frameEditSnapshot) {
+        undoStack.push(frameEditSnapshot);
+        redoStack = [];
+        scheduleSave();
+        renderHistoryControls();
+        showToast("Seção reorganizada");
+      }
+      frameEditSnapshot = null;
+      draggedFrameSection = null;
+    };
+  });
+
+  if (!surface.dataset.creativeOriginalOrder) {
+    surface.dataset.creativeOriginalOrder = JSON.stringify(
+      sections.filter((section) => !section.dataset.creativeAddedId).map((section) => section.dataset.creativeSectionKey),
+    );
+  }
+
+  const requestedOrder = fidelityBucket("orders", screen.id);
+  const originalOrder = JSON.parse(surface.dataset.creativeOriginalOrder || "[]");
+  const effectiveOrder = requestedOrder.length ? requestedOrder : originalOrder;
+  if (effectiveOrder.length) {
+    const sectionMap = new Map(frameSections(surface).map((section) => [section.dataset.creativeSectionKey, section]));
+    effectiveOrder.forEach((key) => {
+      const section = sectionMap.get(key);
+      if (section) surface.append(section);
+    });
+    frameSections(surface)
+      .filter((section) => section.dataset.creativeAddedId && !effectiveOrder.includes(section.dataset.creativeSectionKey))
+      .forEach((section) => surface.append(section));
+  }
+
+  const edits = fidelityBucket("edits", screen.id);
+  editableFrameNodes(surface).forEach((node, index) => {
+    const key = node.dataset.creativeTextKey || `text-${index}`;
+    node.dataset.creativeTextKey = key;
+    node.dataset.creativeOriginalText ||= node.textContent;
+    node.dataset.creativeEditable = "true";
+    node.contentEditable = "true";
+    node.spellcheck = true;
+    const requestedText = Object.hasOwn(edits, key) ? edits[key] : node.dataset.creativeOriginalText;
+    if (node.textContent !== requestedText) node.textContent = requestedText;
+    node.onfocus = () => {
+      frameSelection?.element?.classList.remove("is-creative-selected");
+      frameSelection = { element: node, key, screenId: screen.id, originalText: node.textContent };
+      frameEditSnapshot = historySnapshot();
+      node.classList.add("is-creative-selected");
+      state.selectedBlockId = null;
+      renderInspector();
+    };
+    node.oninput = () => {
+      edits[key] = node.textContent.trim();
+      const inspectorText = elements.inspectorBody.querySelector("[data-fidelity-text]");
+      if (inspectorText) inspectorText.value = node.textContent.trim();
+      scheduleSave();
+    };
+    node.onblur = () => {
+      const value = node.textContent.trim();
+      edits[key] = value;
+      if (frameEditSnapshot && value !== frameSelection?.originalText) {
+        undoStack.push(frameEditSnapshot);
+        redoStack = [];
+        renderHistoryControls();
+        showToast("Texto atualizado");
+      }
+      frameEditSnapshot = null;
+      scheduleSave();
+      renderInspector();
+    };
+  });
+
+  if (!surface.dataset.creativeSurfaceBound) {
+    surface.dataset.creativeSurfaceBound = "true";
+    surface.addEventListener("click", (event) => {
+      if (event.target.closest("a, button") && !event.target.closest("[data-creative-editable]")) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }, true);
+  }
+}
+
+function syncOriginalPreview() {
+  const screen = activeScreen();
+  const bridge = elements.originalPreview.contentWindow?.vpCreativePreview;
+  if (!screen || !frameReady || !bridge) return;
+  frameSelection = null;
+  bridge.showScreen({ screenId: screen.id, sourceScreenId: screen.sourceScreenId || screen.id });
+  refreshOriginalEditing();
+  window.requestAnimationFrame(refreshOriginalEditing);
+}
+
+function fittedZoom(device) {
+  const sizes = {
+    mobile: [390, 844],
+    tablet: [768, 1024],
+    desktop: [1366, 820],
+  };
+  const [width, height] = sizes[device] || sizes.mobile;
+  const availableWidth = Math.max(240, elements.canvasStage.clientWidth - 80);
+  const availableHeight = Math.max(320, elements.canvasStage.clientHeight - 72);
+  const scale = Math.min(.9, availableWidth / width, availableHeight / height);
+  return Math.max(40, Math.min(90, Math.floor((scale * 100) / 5) * 5));
+}
+
 function renderCanvas() {
   const screen = activeScreen();
   if (!screen) return;
@@ -461,6 +678,7 @@ function renderCanvas() {
     </button>`;
 
   elements.canvasStage.dataset.device = state.viewport;
+  if (!state.zoomManual) state.zoom = fittedZoom(state.viewport);
   elements.zoom.value = state.zoom;
   elements.zoomOutput.value = `${state.zoom}%`;
   elements.deviceShell.style.setProperty("--preview-scale", String(state.zoom / 100));
@@ -469,6 +687,8 @@ function renderCanvas() {
     button.classList.toggle("is-active", active);
     button.setAttribute("aria-pressed", String(active));
   });
+
+  syncOriginalPreview();
 
   if (screen.role === "shared") {
     elements.previewNavigation.hidden = true;
@@ -488,6 +708,34 @@ function blockField(label, field, value, type = "input") {
   return `<label class="editor-field"><span>${label}</span><input data-block-field="${field}" value="${escapeHTML(value || "")}" /></label>`;
 }
 
+function renderFidelityInspector() {
+  if (!frameSelection || frameSelection.screenId !== activeScreen().id) {
+    elements.inspectorBody.innerHTML = `
+      <div class="inspector-empty"><i>↖</i><strong>Edite o aplicativo real</strong><p>Clique em qualquer texto dentro da prévia. Arraste uma seção inteira para mudar sua posição.</p></div>`;
+    return;
+  }
+
+  const section = frameSelection.element.closest("[data-creative-section-key]");
+  if (state.inspectorTab === "style") {
+    elements.inspectorBody.innerHTML = `
+      <section class="inspector-section">
+        <div class="inspector-section__heading"><h3>Elemento original</h3><span>${escapeHTML(frameSelection.element.tagName.toLowerCase())}</span></div>
+        <p class="inspector-note">A identidade visual permanece vinculada ao aplicativo original. Nesta etapa, altere a hierarquia movendo a seção completa.</p>
+      </section>
+      ${section ? `<section class="inspector-section"><h3>Posição da seção</h3><div class="inspector-actions"><button type="button" data-fidelity-action="up">Mover acima</button><button type="button" data-fidelity-action="down">Mover abaixo</button></div></section>` : ""}`;
+    return;
+  }
+
+  elements.inspectorBody.innerHTML = `
+    <section class="inspector-section">
+      <div class="inspector-section__heading"><h3>Texto selecionado</h3><span>Aplicativo original</span></div>
+      <label class="editor-field"><span>Conteúdo</span><textarea data-fidelity-text>${escapeHTML(frameSelection.element.textContent.trim())}</textarea></label>
+      <p class="inspector-note">Você também pode escrever diretamente dentro da prévia.</p>
+      <button class="screen-action" type="button" data-fidelity-action="save-text">Aplicar texto</button>
+    </section>
+    ${section ? `<section class="inspector-section"><h3>Organização</h3><div class="inspector-actions"><button type="button" data-fidelity-action="up">Mover acima</button><button type="button" data-fidelity-action="down">Mover abaixo</button></div></section>` : ""}`;
+}
+
 function renderInspector() {
   document.querySelectorAll("[data-inspector-tab]").forEach((button) => {
     const active = button.dataset.inspectorTab === state.inspectorTab;
@@ -497,6 +745,11 @@ function renderInspector() {
 
   if (state.inspectorTab === "screen") {
     renderScreenInspector();
+    return;
+  }
+
+  if (elements.originalPreview && frameReady) {
+    renderFidelityInspector();
     return;
   }
 
@@ -673,8 +926,28 @@ function deleteBlock(blockId) {
   }, "Conteúdo removido");
 }
 
+function addOriginalBlock(type) {
+  if (!blockCatalog[type]) return;
+  const screen = activeScreen();
+  const addition = { id: uid("original"), type };
+  const snapshot = historySnapshot();
+  fidelityBucket("additions", screen.id)[addition.id] = addition;
+  undoStack.push(snapshot);
+  redoStack = [];
+  scheduleSave();
+  renderHistoryControls();
+  refreshOriginalEditing();
+  renderScreenList();
+  elements.blockDialog.close();
+  showToast(`${blockCatalog[type].name} adicionado com o visual original`);
+}
+
 function addBlock(type) {
   if (!blockCatalog[type]) return;
+  if (elements.originalPreview && frameReady) {
+    addOriginalBlock(type);
+    return;
+  }
   commit(() => {
     const block = makeBlock(type);
     activeScreen().blocks.push(block);
@@ -688,6 +961,7 @@ function duplicateScreen() {
   commit(() => {
     const copy = clone(screen);
     copy.id = uid("screen");
+    copy.sourceScreenId = screen.sourceScreenId || screen.id;
     copy.name = `${screen.name} · cópia`;
     copy.navLabel = screen.navLabel;
     copy.blocks.forEach((block) => { block.id = uid("block"); });
@@ -725,7 +999,8 @@ function createScreenFromForm(form) {
     form: [makeBlock("hero", { text: "Explique o objetivo do formulário." }), makeBlock("text", { title: "Campo ou pergunta", text: "Descreva o conteúdo que deverá ser preenchido." }), makeBlock("button", { action: "Salvar e continuar", tone: "copper" })],
   };
   commit(() => {
-    const screen = makeScreen(uid("screen"), name, role, templates[template] || []);
+    const sourceScreenId = role === "coach" ? "coach-home" : role === "shared" ? "shared-login" : "student-home";
+    const screen = makeScreen(uid("screen"), name, role, templates[template] || [], { sourceScreenId });
     state.screens.push(screen);
     state.activeScreenId = screen.id;
     state.selectedBlockId = null;
@@ -737,6 +1012,14 @@ function createScreenFromForm(form) {
 function activateMobilePanel(panelId) {
   document.querySelectorAll(".creative-workspace > *").forEach((panel) => panel.classList.toggle("is-mobile-active", panel.id === panelId));
   document.querySelectorAll("[data-mobile-panel]").forEach((button) => button.classList.toggle("is-active", button.dataset.mobilePanel === panelId));
+  if (panelId === "canvas-panel" && !state.zoomManual) {
+    window.requestAnimationFrame(() => {
+      state.zoom = fittedZoom(state.viewport);
+      elements.zoom.value = state.zoom;
+      elements.zoomOutput.value = `${state.zoom}%`;
+      elements.deviceShell.style.setProperty("--preview-scale", String(state.zoom / 100));
+    });
+  }
 }
 
 function openPresentation() {
@@ -750,6 +1033,42 @@ function closePresentation() {
   elements.presentation.hidden = true;
   elements.presentationMount.innerHTML = "";
   document.body.style.overflow = "";
+}
+
+function moveSelectedOriginalSection(delta) {
+  const section = frameSelection?.element?.closest("[data-creative-section-key]");
+  const surface = elements.originalPreview.contentWindow?.vpCreativePreview?.getActiveSurface?.();
+  if (!section || !surface) return;
+  const sections = frameSections(surface);
+  const index = sections.indexOf(section);
+  const target = sections[index + delta];
+  if (!target) return;
+  const snapshot = historySnapshot();
+  if (delta < 0) surface.insertBefore(section, target);
+  else surface.insertBefore(section, target.nextSibling);
+  persistFrameOrder(surface, activeScreen().id);
+  undoStack.push(snapshot);
+  redoStack = [];
+  scheduleSave();
+  renderHistoryControls();
+  showToast(delta < 0 ? "Seção movida para cima" : "Seção movida para baixo");
+}
+
+function saveSelectedOriginalText() {
+  const input = elements.inspectorBody.querySelector("[data-fidelity-text]");
+  if (!input || !frameSelection?.element?.isConnected) return;
+  const snapshot = frameEditSnapshot || historySnapshot();
+  const previous = frameSelection.element.textContent;
+  frameSelection.element.textContent = input.value;
+  fidelityBucket("edits", frameSelection.screenId)[frameSelection.key] = input.value;
+  if (previous !== input.value || frameEditSnapshot) {
+    undoStack.push(snapshot);
+    redoStack = [];
+  }
+  frameEditSnapshot = null;
+  scheduleSave();
+  renderHistoryControls();
+  showToast("Texto aplicado");
 }
 
 function saveVersion(label) {
@@ -818,6 +1137,17 @@ function redo() {
 }
 
 function wireEvents() {
+  elements.originalPreview.addEventListener("load", () => {
+    frameReady = Boolean(elements.originalPreview.contentWindow?.vpCreativePreview);
+    syncOriginalPreview();
+    renderInspector();
+  });
+  window.addEventListener("message", (event) => {
+    if (event.origin !== window.location.origin || event.data?.type !== "vp-creative-preview-ready") return;
+    frameReady = true;
+    syncOriginalPreview();
+    renderInspector();
+  });
   document.querySelector("#new-screen-button").addEventListener("click", () => elements.screenDialog.showModal());
   document.querySelector("#add-block-button").addEventListener("click", () => elements.blockDialog.showModal());
   document.querySelector("#duplicate-screen-button").addEventListener("click", duplicateScreen);
@@ -860,6 +1190,7 @@ function wireEvents() {
   document.querySelectorAll("[data-device]").forEach((button) => {
     button.addEventListener("click", () => {
       state.viewport = button.dataset.device;
+      state.zoomManual = false;
       scheduleSave();
       renderCanvas();
     });
@@ -867,6 +1198,7 @@ function wireEvents() {
 
   elements.zoom.addEventListener("input", () => {
     state.zoom = Number(elements.zoom.value);
+    state.zoomManual = true;
     elements.zoomOutput.value = `${state.zoom}%`;
     elements.deviceShell.style.setProperty("--preview-scale", String(state.zoom / 100));
   });
@@ -973,6 +1305,7 @@ function wireEvents() {
   });
 
   elements.inspectorBody.addEventListener("change", (event) => {
+    if (event.target.closest("[data-fidelity-text]")) return;
     const block = selectedBlock();
     const blockFieldInput = event.target.closest("[data-block-field]");
     const complexField = event.target.closest("[data-complex-field]");
@@ -1010,7 +1343,42 @@ function wireEvents() {
     }
   });
 
+  elements.inspectorBody.addEventListener("focusin", (event) => {
+    if (!event.target.closest("[data-fidelity-text]") || !frameSelection) return;
+    frameEditSnapshot = historySnapshot();
+    frameSelection.originalText = frameSelection.element.textContent;
+  });
+
+  elements.inspectorBody.addEventListener("input", (event) => {
+    const input = event.target.closest("[data-fidelity-text]");
+    if (!input || !frameSelection?.element?.isConnected) return;
+    frameSelection.element.textContent = input.value;
+    fidelityBucket("edits", frameSelection.screenId)[frameSelection.key] = input.value;
+    scheduleSave();
+  });
+
+  elements.inspectorBody.addEventListener("focusout", (event) => {
+    const input = event.target.closest("[data-fidelity-text]");
+    if (!input || !frameSelection || !frameEditSnapshot) return;
+    if (input.value !== frameSelection.originalText) {
+      undoStack.push(frameEditSnapshot);
+      redoStack = [];
+      renderHistoryControls();
+      showToast("Texto atualizado");
+    }
+    frameEditSnapshot = null;
+  });
+
   elements.inspectorBody.addEventListener("click", (event) => {
+    const fidelityAction = event.target.closest("[data-fidelity-action]");
+    if (fidelityAction) {
+      if (fidelityAction.dataset.fidelityAction === "save-text") {
+        saveSelectedOriginalText();
+        return;
+      }
+      moveSelectedOriginalSection(fidelityAction.dataset.fidelityAction === "up" ? -1 : 1);
+      return;
+    }
     const option = event.target.closest("[data-set-option]");
     const inspectorAction = event.target.closest("[data-inspector-action]");
     const screenAction = event.target.closest("[data-screen-action]");
