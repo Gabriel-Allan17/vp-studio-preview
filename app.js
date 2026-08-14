@@ -1,4 +1,4 @@
-import { mountBodyMap, validateBodyMapCatalog } from "./body-map.js?v=22";
+import { mountBodyMap, validateBodyMapCatalog } from "./body-map.js?v=23";
 
 const icon = (name) => `<svg aria-hidden="true"><use href="#icon-${name}"></use></svg>`;
 
@@ -963,7 +963,7 @@ function initialiseCreativePreview() {
     "coach-reports": ["coach", "reports"],
   };
 
-  const showScreen = ({ screenId = "student-home", sourceScreenId = screenId } = {}) => {
+  const showScreen = ({ screenId = "student-home", sourceScreenId = screenId, screenName = "" } = {}) => {
     const resolvedId = screenRoutes[sourceScreenId] ? sourceScreenId : "student-home";
     if (sourceScreenId === "shared-login") {
       setAccessRole("student", { syncQuery: false });
@@ -974,6 +974,10 @@ function initialiseCreativePreview() {
     const [role, route] = screenRoutes[resolvedId];
     setAccessRole(role, { syncQuery: false });
     enterWorkspace(route);
+    if (screenId !== resolvedId && screenName) {
+      document.querySelector("#page-overline").textContent = "TELA PERSONALIZADA";
+      document.querySelector("#page-title").textContent = screenName;
+    }
     return { screenId, sourceScreenId: resolvedId, surface: "workspace" };
   };
 
@@ -981,7 +985,7 @@ function initialiseCreativePreview() {
     showScreen,
     getActiveSurface() {
       return workspaceShell.hidden
-        ? loginScreen
+        ? loginScreen.querySelector(".login-panel__body")
         : document.querySelector(".app-view.is-active");
     },
   };

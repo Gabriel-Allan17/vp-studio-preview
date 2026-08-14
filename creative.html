@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#202522" />
     <meta name="description" content="Editor visual do aplicativo Vinicius Pontes Studio." />
     <link rel="icon" href="assets/icons/icon-192.png" />
-    <link rel="stylesheet" href="creative.css?v=9" />
+    <link rel="stylesheet" href="creative.css?v=10" />
     <title>VP Studio | Modo Criativo</title>
   </head>
   <body>
@@ -194,9 +194,11 @@
 
         <section class="project-section">
           <h3>Levar ou recuperar o projeto</h3>
+          <p>As alterações ficam neste navegador. Exporte o projeto antes de trocar de aparelho e baixe o resumo ao final da reunião.</p>
           <div class="project-actions">
             <button type="button" id="export-button">Exportar arquivo</button>
             <button type="button" id="import-button">Importar arquivo</button>
+            <button type="button" id="report-button">Baixar resumo das mudanças</button>
             <button class="danger-action" type="button" id="reset-button">Restaurar modelo inicial</button>
           </div>
           <input type="file" id="import-file" accept="application/json,.json" hidden />
@@ -213,6 +215,6 @@
     </div>
 
     <div class="creative-toast" id="creative-toast" role="status" aria-live="polite"></div>
-    <script type="module" src="creative.js?v=9"></script>
+    <script type="module" src="creative.js?v=10"></script>
   </body>
 </html>
