@@ -1,5 +1,5 @@
 const STORAGE_KEY = "vp-studio-creative-v1";
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 const MAX_HISTORY = 80;
 
 let sequence = 0;
@@ -22,6 +22,17 @@ const roleHeadings = {
   student: "ÁREA DO ALUNO",
   coach: "ÁREA DO PROFESSOR",
   shared: "VP STUDIO",
+};
+
+const navigationPlacementNames = {
+  existing: "Ícone existente",
+  new: "Novo ícone",
+  hidden: "Sem atalho",
+};
+
+const screenDefaultIcons = {
+  "student-home": "home", "student-agenda": "calendar", "student-workout": "workout", "student-evolution": "chart", "student-profile": "user",
+  "coach-home": "home", "coach-students": "users", "coach-agenda": "calendar", "coach-training": "workout", "coach-reports": "chart",
 };
 
 const blockCatalog = {
@@ -117,6 +128,22 @@ const blockCatalog = {
   },
 };
 
+const originalComponentSelectors = {
+  hero: ".app-view .page-intro",
+  wellness: "#wellness-hero",
+  metrics: ".metric-strip",
+  chart: ".chart-card",
+  workout: ".current-workout-card",
+  schedule: ".schedule-item",
+  list: ".student-table",
+  notice: ".notice-card",
+  text: ".account-intro",
+  button: ".app-view .button--primary",
+  image: ".cobre-login-logo",
+  form: ".account-form",
+  shortcuts: ".notice-grid",
+};
+
 function makeBlock(type, overrides = {}) {
   const definition = blockCatalog[type] || blockCatalog.text;
   return {
@@ -135,6 +162,8 @@ function makeScreen(id, name, role, blocks, options = {}) {
     id,
     sourceScreenId: options.sourceScreenId || id,
     startBlank: options.startBlank || false,
+    navigationPlacement: options.navigationPlacement || (options.sourceScreenId && options.sourceScreenId !== id ? "new" : "existing"),
+    navIcon: options.navIcon || "more",
     name,
     navLabel,
     role,
@@ -155,6 +184,7 @@ function createDefaultProject() {
     zoomManual: false,
     roleFilter: "all",
     inspectorTab: "content",
+    navigationModes: { student: "responsive", coach: "responsive", shared: "responsive" },
     fidelity: { edits: {}, originals: {}, additions: {}, orders: {}, hidden: {} },
     screens: [
       makeScreen("shared-login", "Entrada", "shared", [
@@ -224,11 +254,30 @@ function createDefaultProject() {
   };
 }
 
+function migrateProject(parsed) {
+  const defaults = createDefaultProject();
+  const project = {
+    ...defaults,
+    ...parsed,
+    schemaVersion: SCHEMA_VERSION,
+    navigationModes: { ...defaults.navigationModes, ...(parsed.navigationModes || {}) },
+    fidelity: { ...defaults.fidelity, ...(parsed.fidelity || {}) },
+  };
+  project.screens = parsed.screens.map((screen) => ({
+    startBlank: false,
+    navigationPlacement: screen.id === screen.sourceScreenId || !screen.sourceScreenId ? "existing" : "new",
+    navIcon: screenDefaultIcons[screen.sourceScreenId || screen.id] || "more",
+    baseline: screen.baseline || { name: screen.name, navLabel: screen.navLabel, role: screen.role, showInNav: screen.showInNav },
+    ...screen,
+  }));
+  return project;
+}
+
 function loadProject() {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (parsed?.schemaVersion !== SCHEMA_VERSION || !Array.isArray(parsed.screens) || !parsed.screens.length) return createDefaultProject();
-    return { ...createDefaultProject(), ...parsed };
+    if (!Array.isArray(parsed?.screens) || !parsed.screens.length) return createDefaultProject();
+    return migrateProject(parsed);
   } catch {
     return createDefaultProject();
   }
@@ -246,6 +295,8 @@ let frameEditSnapshot = null;
 let draggedFrameSection = null;
 let frameDragSnapshot = null;
 let frameDragStartOrder = null;
+let placementFrameSection = null;
+let placementFrameSnapshot = null;
 
 const elements = {
   projectTitle: document.querySelector("#project-title"),
@@ -290,6 +341,7 @@ function historySnapshot() {
   return clone({
     screens: state.screens,
     fidelity: state.fidelity,
+    navigationModes: state.navigationModes,
     activeScreenId: state.activeScreenId,
     selectedBlockId: state.selectedBlockId,
   });
@@ -298,6 +350,7 @@ function historySnapshot() {
 function applySnapshot(snapshot) {
   state.screens = clone(snapshot.screens);
   state.fidelity = clone(snapshot.fidelity || { edits: {}, originals: {}, additions: {}, orders: {}, hidden: {} });
+  state.navigationModes = clone(snapshot.navigationModes || { student: "responsive", coach: "responsive", shared: "responsive" });
   state.activeScreenId = snapshot.activeScreenId;
   state.selectedBlockId = snapshot.selectedBlockId;
   ensureValidSelection();
@@ -379,7 +432,7 @@ function renderScreenList() {
         return `
           <button class="screen-item ${screen.id === state.activeScreenId ? "is-active" : ""}" type="button" data-screen-id="${escapeHTML(screen.id)}">
             <span class="screen-item__index">${String(index).padStart(2, "0")}</span>
-            <span class="screen-item__copy"><strong>${escapeHTML(screen.name)}</strong><small>${screen.showInNav ? "Na navegação" : "Fora da navegação"}</small></span>
+            <span class="screen-item__copy"><strong>${escapeHTML(screen.name)}</strong><small>${escapeHTML(navigationPlacementNames[screen.navigationPlacement] || (screen.showInNav ? "Na navegação" : "Sem atalho"))}</small></span>
             <span class="screen-item__count">${count}</span>
           </button>`;
       }).join("")}
@@ -496,18 +549,35 @@ function editableFrameNodes(surface) {
 }
 
 function allFrameSections(surface) {
-  const selector = [
-    ":scope > .page-intro", ":scope > .wellness-hero", ":scope > .dashboard-grid",
-    ":scope > .section-block", ":scope > .date-strip", ":scope > .schedule-list",
-    ":scope > .workout-summary", ":scope > .exercise-list", ":scope > .chart-grid",
-    ":scope > .profile-layout", ":scope > .coach-metrics", ":scope > .coach-dashboard-grid",
-    ":scope > .search-field", ":scope > .student-table", ":scope > .coach-calendar",
-    ":scope > .builder-layout", ":scope > .creative-added-section",
-    ":scope > .cobre-login-logo", ":scope > .login-heading", ":scope > .role-selector",
-    ":scope > .role-selection-summary", ":scope > .cobre-access-status", ":scope > .login-form",
-    ":scope > .login-separator", ":scope > .button", ":scope > .cobre-role-access",
-  ].join(",");
-  return [...surface.querySelectorAll(selector)];
+  const units = [];
+  const add = (node) => { if (node && !units.includes(node)) units.push(node); };
+  [...surface.children].forEach((child) => {
+    if (child.matches(".dashboard-grid,.chart-grid,.coach-metrics,.coach-dashboard-grid,.schedule-list,.exercise-list,.profile-layout,.builder-layout")) {
+      child.dataset.creativeSourceGroup = "true";
+      [...child.children].filter((node) => node.matches("article,section,aside,.card,.schedule-item,.builder-workout")).forEach(add);
+      return;
+    }
+    if (child.matches(".section-block") && child.querySelector(":scope > .metric-strip, :scope > .notice-grid")) {
+      child.dataset.creativeSourceGroup = "true";
+      add(child.querySelector(":scope > .section-title"));
+      child.querySelectorAll(":scope > .metric-strip > article, :scope > .notice-grid > .notice-card").forEach(add);
+      return;
+    }
+    if (child.matches(".student-table,.coach-calendar")) {
+      child.dataset.creativeSourceGroup = "true";
+      [...child.children].filter((node) => !node.matches(".student-table__head")).forEach(add);
+      return;
+    }
+    if (child.matches(".page-intro,.wellness-hero,.section-block,.date-strip,.workout-summary,.search-field,.creative-added-section,.cobre-login-logo,.login-heading,.role-selector,.role-selection-summary,.cobre-access-status,.login-form,.login-separator,.button,.cobre-role-access,.card,article,.section-title,[data-creative-section-key]")) add(child);
+  });
+  units.forEach((unit) => {
+    if (unit.parentElement === surface || unit.dataset.creativeAddedId) return;
+    const parent = unit.parentElement;
+    parent.dataset.creativeGroupKey ||= uid("group");
+    unit.dataset.creativeOriginalParentKey ||= parent.dataset.creativeGroupKey;
+    unit.dataset.creativeOriginalIndex ||= String([...parent.children].indexOf(unit));
+  });
+  return units;
 }
 
 function frameSections(surface) {
@@ -516,6 +586,95 @@ function frameSections(surface) {
 
 function persistFrameOrder(surface, screenId) {
   state.fidelity.orders[screenId] = frameSections(surface).map((section) => section.dataset.creativeSectionKey);
+}
+
+function flattenFrameSections(surface, sections) {
+  sections.forEach((section) => {
+    section.dataset.creativeDetached = "true";
+    surface.append(section);
+  });
+  surface.querySelectorAll("[data-creative-source-group]").forEach((group) => {
+    group.hidden = true;
+    group.dataset.creativeEmptied = "true";
+  });
+}
+
+function restoreOriginalFrameStructure(surface) {
+  const units = [...surface.querySelectorAll("[data-creative-original-parent-key]")]
+    .sort((a, b) => Number(a.dataset.creativeOriginalIndex) - Number(b.dataset.creativeOriginalIndex));
+  units.forEach((unit) => {
+    const parent = surface.querySelector(`[data-creative-group-key="${unit.dataset.creativeOriginalParentKey}"]`);
+    if (parent) parent.append(unit);
+    delete unit.dataset.creativeDetached;
+  });
+  surface.querySelectorAll("[data-creative-source-group]").forEach((group) => {
+    group.hidden = false;
+    delete group.dataset.creativeEmptied;
+  });
+}
+
+function reorderFrameSections(surface, source, target, after = false) {
+  const sections = frameSections(surface);
+  const from = sections.indexOf(source);
+  const targetIndex = sections.indexOf(target);
+  if (from < 0 || targetIndex < 0 || source === target) return false;
+  const reordered = sections.filter((section) => section !== source);
+  let destination = reordered.indexOf(target) + (after ? 1 : 0);
+  reordered.splice(destination, 0, source);
+  const before = sections.map((section) => section.dataset.creativeSectionKey).join("|");
+  const next = reordered.map((section) => section.dataset.creativeSectionKey).join("|");
+  if (before === next) return false;
+  flattenFrameSections(surface, reordered);
+  return true;
+}
+
+function selectOriginalSection(section, textNode = null) {
+  frameSelection?.element?.classList.remove("is-creative-selected");
+  selectedFrameSection()?.classList.remove("is-creative-section-selected");
+  frameSelection = {
+    element: textNode || section,
+    section,
+    key: textNode?.dataset.creativeTextKey || null,
+    screenId: activeScreen().id,
+    originalText: textNode?.textContent || "",
+    kind: textNode ? "text" : "section",
+  };
+  section.classList.add("is-creative-section-selected");
+  if (textNode) textNode.classList.add("is-creative-selected");
+  state.selectedBlockId = null;
+  renderInspector();
+}
+
+function reselectOriginalSection(surface, sectionKey) {
+  const refreshed = allFrameSections(surface).find((section) => section.dataset.creativeSectionKey === sectionKey);
+  if (refreshed) selectOriginalSection(refreshed);
+  else renderInspector();
+}
+
+function finishFramePlacement(surface, target) {
+  if (!placementFrameSection) return false;
+  if (placementFrameSection === target) {
+    showToast("Esta seção já está nessa posição. Escolha outra seção como destino.");
+    return false;
+  }
+  const moved = reorderFrameSections(surface, placementFrameSection, target, false);
+  if (!moved) {
+    showToast("A posição escolhida é igual à atual.");
+    return false;
+  }
+  const movedKey = placementFrameSection.dataset.creativeSectionKey;
+  persistFrameOrder(surface, activeScreen().id);
+  if (placementFrameSnapshot) undoStack.push(placementFrameSnapshot);
+  redoStack = [];
+  placementFrameSection.classList.remove("is-creative-moving");
+  placementFrameSection = null;
+  placementFrameSnapshot = null;
+  scheduleSave();
+  renderHistoryControls();
+  refreshOriginalEditing();
+  reselectOriginalSection(surface, movedKey);
+  showToast("Seção posicionada antes do destino escolhido.");
+  return true;
 }
 
 function refreshOriginalEditing() {
@@ -534,9 +693,15 @@ function refreshOriginalEditing() {
       [data-creative-editable] { cursor: text; border-radius: 3px; }
       [data-creative-editable]:hover { outline: 1px dashed #a45f42; outline-offset: 3px; }
       [data-creative-editable]:focus, [data-creative-editable].is-creative-selected { outline: 2px solid #a45f42; outline-offset: 3px; }
-      [data-creative-section-key] { cursor: grab; }
+      [data-creative-section-key] { position: relative; cursor: pointer; transition: outline-color 160ms ease, opacity 160ms ease; }
+      [data-creative-section-key]:hover, [data-creative-section-key].is-creative-section-selected { outline: 2px solid #a45f42; outline-offset: 5px; }
       [data-creative-section-key].is-creative-dragging { opacity: .48; }
       [data-creative-section-key].is-creative-drop { outline: 2px dashed #a45f42; outline-offset: 5px; }
+      [data-creative-section-key].is-creative-moving { outline: 3px solid #a45f42; outline-offset: 6px; }
+      [data-creative-detached] { width: 100% !important; max-width: none !important; margin: 0 0 18px !important; }
+      [data-creative-emptied] { display: none !important; }
+      .creative-move-handle { position: absolute; z-index: 30; top: 8px; right: 8px; min-height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid rgb(255 255 255 / 45%); border-radius: 999px; color: #fff; background: #703d2b; box-shadow: 0 5px 16px rgb(0 0 0 / 24%); font: 700 11px/1 sans-serif; letter-spacing: .04em; cursor: grab; user-select: none; }
+      .creative-move-handle:active { cursor: grabbing; }
     `;
     doc.head.append(helperStyle);
   }
@@ -544,6 +709,11 @@ function refreshOriginalEditing() {
   const additions = fidelityBucket("additions", screen.id);
   const hiddenSections = fidelityBucket("hidden", screen.id);
   surface.querySelectorAll("[data-creative-added-id]").forEach((node) => node.remove());
+  restoreOriginalFrameStructure(surface);
+  surface.querySelectorAll("[data-creative-source-group]").forEach((group) => {
+    group.hidden = false;
+    delete group.dataset.creativeEmptied;
+  });
   allFrameSections(surface).forEach((section) => { section.hidden = false; });
   Object.values(additions).forEach((addition) => {
     if (surface.querySelector(`[data-creative-added-id="${addition.id}"]`)) return;
@@ -557,12 +727,26 @@ function refreshOriginalEditing() {
     section.dataset.creativeSectionKey ||= section.dataset.creativeAddedId ? `added-${section.dataset.creativeAddedId}` : `section-${index}`;
     const isBaseSection = !section.dataset.creativeAddedId;
     section.hidden = isBaseSection && (screen.startBlank || Boolean(hiddenSections[section.dataset.creativeSectionKey]));
-    section.draggable = true;
-    section.ondragstart = () => {
+    section.draggable = false;
+    let moveHandle = [...section.children].find((child) => child.classList?.contains("creative-move-handle"));
+    if (!moveHandle) {
+      moveHandle = doc.createElement("span");
+      moveHandle.className = "creative-move-handle";
+      moveHandle.textContent = "↕ Mover";
+      moveHandle.title = "Arraste ou toque e escolha o destino";
+      moveHandle.contentEditable = "false";
+      section.append(moveHandle);
+    }
+    moveHandle.draggable = true;
+    moveHandle.ondragstart = (event) => {
+      event.stopPropagation();
+      moveHandle.dataset.creativeDragging = "true";
       draggedFrameSection = section;
       frameDragSnapshot = historySnapshot();
       frameDragStartOrder = frameSections(surface).map((item) => item.dataset.creativeSectionKey);
       section.classList.add("is-creative-dragging");
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", section.dataset.creativeSectionKey);
     };
     section.ondragover = (event) => {
       if (!draggedFrameSection || draggedFrameSection === section) return;
@@ -574,14 +758,14 @@ function refreshOriginalEditing() {
       if (!draggedFrameSection || draggedFrameSection === section) return;
       event.preventDefault();
       const after = event.clientY > section.getBoundingClientRect().top + section.getBoundingClientRect().height / 2;
-      surface.insertBefore(draggedFrameSection, after ? section.nextSibling : section);
+      reorderFrameSections(surface, draggedFrameSection, section, after);
       section.classList.remove("is-creative-drop");
     };
-    section.ondragend = () => {
+    moveHandle.ondragend = () => {
       section.classList.remove("is-creative-dragging");
       frameSections(surface).forEach((item) => item.classList.remove("is-creative-drop"));
       const finalOrder = frameSections(surface).map((item) => item.dataset.creativeSectionKey);
-      const changed = frameDragStartOrder && finalOrder.some((key, index) => key !== frameDragStartOrder[index]);
+      const changed = frameDragStartOrder && (finalOrder.length !== frameDragStartOrder.length || finalOrder.some((key, index) => key !== frameDragStartOrder[index]));
       if (changed && frameDragSnapshot) {
         state.fidelity.orders[screen.id] = finalOrder;
         undoStack.push(frameDragSnapshot);
@@ -589,10 +773,42 @@ function refreshOriginalEditing() {
         scheduleSave();
         renderHistoryControls();
         showToast("Seção reorganizada");
+      } else {
+        showToast("Nenhuma mudança: solte a seção sobre outro bloco destacado.");
       }
       frameDragSnapshot = null;
       frameDragStartOrder = null;
       draggedFrameSection = null;
+      moveHandle.dataset.creativeLastDrag = String(Date.now());
+      delete moveHandle.dataset.creativeDragging;
+    };
+    moveHandle.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (moveHandle.dataset.creativeDragging || Date.now() - Number(moveHandle.dataset.creativeLastDrag || 0) < 350) return;
+      if (placementFrameSection === section) {
+        section.classList.remove("is-creative-moving");
+        placementFrameSection = null;
+        placementFrameSnapshot = null;
+        showToast("Movimentação cancelada.");
+        return;
+      }
+      placementFrameSection?.classList.remove("is-creative-moving");
+      placementFrameSection = section;
+      placementFrameSnapshot = historySnapshot();
+      section.classList.add("is-creative-moving");
+      selectOriginalSection(section);
+      showToast("Agora toque na seção que deve ficar logo depois desta.");
+    };
+    section.onclick = (event) => {
+      if (event.target.closest(".creative-move-handle,[data-creative-editable]")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (placementFrameSection) {
+        finishFramePlacement(surface, section);
+        return;
+      }
+      selectOriginalSection(section);
     };
   });
 
@@ -603,17 +819,20 @@ function refreshOriginalEditing() {
   }
 
   const requestedOrder = fidelityBucket("orders", screen.id);
-  const originalOrder = JSON.parse(surface.dataset.creativeOriginalOrder || "[]");
-  const effectiveOrder = requestedOrder.length ? requestedOrder : originalOrder;
-  if (effectiveOrder.length) {
+  if (requestedOrder.length) {
     const sectionMap = new Map(frameSections(surface).map((section) => [section.dataset.creativeSectionKey, section]));
-    effectiveOrder.forEach((key) => {
+    const orderedSections = [];
+    requestedOrder.forEach((key) => {
       const section = sectionMap.get(key);
-      if (section) surface.append(section);
+      if (section) orderedSections.push(section);
     });
     frameSections(surface)
-      .filter((section) => section.dataset.creativeAddedId && !effectiveOrder.includes(section.dataset.creativeSectionKey))
-      .forEach((section) => surface.append(section));
+      .filter((section) => !requestedOrder.includes(section.dataset.creativeSectionKey))
+      .forEach((section) => orderedSections.push(section));
+    flattenFrameSections(surface, orderedSections);
+  }
+  if (screen.startBlank) {
+    surface.querySelectorAll("[data-creative-source-group]").forEach((group) => { group.hidden = true; });
   }
 
   const edits = fidelityBucket("edits", screen.id);
@@ -633,9 +852,10 @@ function refreshOriginalEditing() {
     if (node.textContent !== requestedText) node.textContent = requestedText;
     node.onfocus = () => {
       frameSelection?.element?.classList.remove("is-creative-selected");
-      frameSelection = { element: node, key, screenId: screen.id, originalText: node.textContent };
+      frameSelection = { element: node, section: node.closest("[data-creative-section-key]"), key, screenId: screen.id, originalText: node.textContent, kind: "text" };
       frameEditSnapshot = historySnapshot();
       node.classList.add("is-creative-selected");
+      frameSelection.section?.classList.add("is-creative-section-selected");
       state.selectedBlockId = null;
       renderInspector();
     };
@@ -656,7 +876,6 @@ function refreshOriginalEditing() {
       }
       frameEditSnapshot = null;
       scheduleSave();
-      renderInspector();
     };
   });
 
@@ -665,7 +884,7 @@ function refreshOriginalEditing() {
     surface.addEventListener("click", (event) => {
       if (event.target.closest("a, button") && !event.target.closest("[data-creative-editable]")) {
         event.preventDefault();
-        event.stopPropagation();
+        if (!event.target.closest("[data-creative-section-key]")) event.stopPropagation();
       }
     }, true);
   }
@@ -676,7 +895,30 @@ function syncOriginalPreview() {
   const bridge = elements.originalPreview.contentWindow?.vpCreativePreview;
   if (!screen || !frameReady || !bridge) return;
   frameSelection = null;
-  bridge.showScreen({ screenId: screen.id, sourceScreenId: screen.sourceScreenId || screen.id, screenName: screen.name });
+  const roleScreens = state.screens.filter((item) => item.role === screen.role && item.showInNav && item.navigationPlacement !== "hidden");
+  const baseScreens = roleScreens.filter((item) => item.id === item.sourceScreenId);
+  const navigationItems = baseScreens.map((base) => {
+    const replacements = roleScreens.filter((item) => item.id !== item.sourceScreenId && item.navigationPlacement === "existing" && item.sourceScreenId === base.id);
+    const target = replacements.find((item) => item.id === screen.id) || (screen.id === base.id ? base : replacements[0]) || base;
+    return {
+      id: target.id,
+      label: target.navLabel,
+      icon: screenDefaultIcons[base.id] || "more",
+    };
+  });
+  roleScreens.filter((item) => item.navigationPlacement === "new").forEach((item) => {
+    navigationItems.push({ id: item.id, label: item.navLabel, icon: item.navIcon || "more" });
+  });
+  bridge.showScreen({
+    screenId: screen.id,
+    sourceScreenId: screen.sourceScreenId || screen.id,
+    screenName: screen.name,
+    navigation: {
+      items: navigationItems,
+      activeScreenId: screen.id,
+      mode: state.navigationModes?.[screen.role] || "responsive",
+    },
+  });
   refreshOriginalEditing();
   window.requestAnimationFrame(refreshOriginalEditing);
 }
@@ -740,40 +982,48 @@ function blockField(label, field, value, type = "input") {
 function renderFidelityInspector() {
   if (!frameSelection || frameSelection.screenId !== activeScreen().id) {
     elements.inspectorBody.innerHTML = `
-      <div class="inspector-empty"><i>↖</i><strong>Edite o aplicativo real</strong><p>Clique em qualquer texto dentro da prévia. Arraste uma seção inteira para mudar sua posição.</p></div>`;
+      <div class="inspector-empty"><i>↖</i><strong>Selecione uma seção</strong><p>Toque em qualquer área de um bloco. Para editar apenas o texto, toque diretamente sobre ele.</p></div>`;
     return;
   }
 
   const section = selectedFrameSection();
+  const surface = elements.originalPreview.contentWindow?.vpCreativePreview?.getActiveSurface?.();
+  const sections = surface ? frameSections(surface) : [];
+  const sectionIndex = sections.indexOf(section);
+  const sectionName = section ? originalSectionLabel(section) : "Seção";
   const sectionActions = section ? `
     <section class="inspector-section">
-      <h3>Organização da seção</h3>
+      <div class="inspector-section__heading"><h3>Organização da seção</h3><span>${sectionIndex + 1} de ${sections.length}</span></div>
+      <p class="inspector-note"><strong>${escapeHTML(sectionName)}</strong><br />Use uma posição exata ou as setas. Os comandos funcionam no primeiro toque.</p>
       <div class="inspector-actions">
-        <button type="button" data-fidelity-action="up">Mover acima</button>
-        <button type="button" data-fidelity-action="down">Mover abaixo</button>
+        <button type="button" data-fidelity-action="first" ${sectionIndex <= 0 ? "disabled" : ""}>Ir para o início</button>
+        <button type="button" data-fidelity-action="up" ${sectionIndex <= 0 ? "disabled" : ""}>↑ Uma posição</button>
+        <button type="button" data-fidelity-action="down" ${sectionIndex < 0 || sectionIndex >= sections.length - 1 ? "disabled" : ""}>↓ Uma posição</button>
+        <button type="button" data-fidelity-action="last" ${sectionIndex < 0 || sectionIndex >= sections.length - 1 ? "disabled" : ""}>Ir para o final</button>
         <button type="button" data-fidelity-action="duplicate">Duplicar seção</button>
         <button class="danger-action" type="button" data-fidelity-action="remove">Remover seção</button>
       </div>
+      <label class="editor-field"><span>Posicionar antes de</span><select data-fidelity-position><option value="">Escolha uma seção</option>${sections.filter((item) => item !== section).map((item) => `<option value="${escapeHTML(item.dataset.creativeSectionKey)}">${escapeHTML(originalSectionLabel(item))}</option>`).join("")}</select></label>
       <label class="editor-field"><span>Mover esta seção para outra tela</span><select data-fidelity-move-screen><option value="">Escolha a tela</option>${state.screens.filter((screen) => screen.id !== activeScreen().id).map((screen) => `<option value="${escapeHTML(screen.id)}">${escapeHTML(screen.name)} · ${escapeHTML(roleNames[screen.role])}</option>`).join("")}</select></label>
     </section>` : "";
   if (state.inspectorTab === "style") {
     elements.inspectorBody.innerHTML = `
       <section class="inspector-section">
-        <div class="inspector-section__heading"><h3>Elemento original</h3><span>${escapeHTML(frameSelection.element.tagName.toLowerCase())}</span></div>
+        <div class="inspector-section__heading"><h3>Seção selecionada</h3><span>${escapeHTML(frameSelection.element.tagName.toLowerCase())}</span></div>
         <p class="inspector-note">A identidade visual permanece vinculada ao aplicativo original. Nesta etapa, altere a hierarquia movendo a seção completa.</p>
       </section>
       ${sectionActions}`;
     return;
   }
 
-  elements.inspectorBody.innerHTML = `
+  const textEditor = frameSelection.kind === "text" ? `
     <section class="inspector-section">
       <div class="inspector-section__heading"><h3>Texto selecionado</h3><span>Aplicativo original</span></div>
       <label class="editor-field"><span>Conteúdo</span><textarea data-fidelity-text>${escapeHTML(frameSelection.element.textContent.trim())}</textarea></label>
       <p class="inspector-note">Você também pode escrever diretamente dentro da prévia.</p>
       <button class="screen-action" type="button" data-fidelity-action="save-text">Aplicar texto</button>
-    </section>
-    ${sectionActions}`;
+    </section>` : `<section class="inspector-section"><div class="inspector-section__heading"><h3>Seção selecionada</h3><span>Aplicativo original</span></div><p class="inspector-note">A seção inteira está selecionada. Toque em uma frase dentro dela quando quiser alterar somente o texto.</p></section>`;
+  elements.inspectorBody.innerHTML = `${textEditor}${sectionActions}`;
 }
 
 function renderInspector() {
@@ -886,13 +1136,22 @@ function renderScreenInspector() {
   const sectionCount = activeSurface && frameReady
     ? frameSections(activeSurface).length
     : Math.max(0, (screen.startBlank ? 0 : screen.blocks.length) + additions - removed);
+  const sourceOptions = state.screens.filter((item) => item.role === screen.role && item.id === item.sourceScreenId);
+  const navigationMode = state.navigationModes?.[screen.role] || "responsive";
   elements.inspectorBody.innerHTML = `
     <section class="inspector-section">
       <div class="inspector-section__heading"><h3>Identificação</h3><span>${sectionCount} seções editáveis</span></div>
       <label class="editor-field"><span>Nome da tela</span><input data-screen-field="name" value="${escapeHTML(screen.name)}" /></label>
       <label class="editor-field"><span>Nome curto na navegação</span><input data-screen-field="navLabel" value="${escapeHTML(screen.navLabel)}" /></label>
       <label class="editor-field"><span>Perfil</span><select data-screen-field="role"><option value="student" ${screen.role === "student" ? "selected" : ""}>Aluno</option><option value="coach" ${screen.role === "coach" ? "selected" : ""}>Professor</option><option value="shared" ${screen.role === "shared" ? "selected" : ""}>Compartilhada</option></select></label>
-      <label class="editor-field"><span>Visibilidade na navegação</span><select data-screen-field="showInNav"><option value="true" ${screen.showInNav ? "selected" : ""}>Mostrar</option><option value="false" ${!screen.showInNav ? "selected" : ""}>Ocultar</option></select></label>
+    </section>
+    <section class="inspector-section">
+      <div class="inspector-section__heading"><h3>Navegação</h3><span>${escapeHTML(roleNames[screen.role])}</span></div>
+      <p class="inspector-note">Defina se esta tela abre por um ícone que já existe, recebe um novo ícone ou funciona como etapa interna.</p>
+      <label class="editor-field"><span>Como acessar esta tela</span><select data-screen-field="navigationPlacement"><option value="existing" ${screen.navigationPlacement === "existing" ? "selected" : ""}>Usar ícone existente</option><option value="new" ${screen.navigationPlacement === "new" ? "selected" : ""}>Criar novo ícone</option><option value="hidden" ${screen.navigationPlacement === "hidden" ? "selected" : ""}>Sem ícone, acesso interno</option></select></label>
+      <label class="editor-field"><span>Tela e ícone usados como referência</span><select data-screen-field="sourceScreenId">${sourceOptions.map((item) => `<option value="${escapeHTML(item.id)}" ${screen.sourceScreenId === item.id ? "selected" : ""}>${escapeHTML(item.name)}</option>`).join("")}</select></label>
+      <label class="editor-field"><span>Ícone quando for um item novo</span><select data-screen-field="navIcon"><option value="more" ${screen.navIcon === "more" ? "selected" : ""}>Mais opções</option><option value="home" ${screen.navIcon === "home" ? "selected" : ""}>Início</option><option value="calendar" ${screen.navIcon === "calendar" ? "selected" : ""}>Agenda</option><option value="workout" ${screen.navIcon === "workout" ? "selected" : ""}>Treino</option><option value="chart" ${screen.navIcon === "chart" ? "selected" : ""}>Evolução</option><option value="user" ${screen.navIcon === "user" ? "selected" : ""}>Perfil</option><option value="users" ${screen.navIcon === "users" ? "selected" : ""}>Alunos</option></select></label>
+      <label class="editor-field"><span>Formato da navegação deste perfil</span><select data-role-navigation-mode><option value="responsive" ${navigationMode === "responsive" ? "selected" : ""}>Inferior no celular e lateral no desktop</option><option value="bottom" ${navigationMode === "bottom" ? "selected" : ""}>Sempre inferior</option><option value="sidebar" ${navigationMode === "sidebar" ? "selected" : ""}>Sempre lateral</option></select></label>
     </section>
     <section class="inspector-section">
       <h3>Organização da tela</h3>
@@ -911,6 +1170,7 @@ function renderBlockLibrary() {
       <i>${escapeHTML(definition.marker)}</i>
       <strong>${escapeHTML(definition.name)}</strong>
       <small>${escapeHTML(definition.description)}</small>
+      <span class="block-library__origin">${originalComponentSelectors[type] ? "COMPONENTE DO APP" : "RECURSO DE EDIÇÃO"}</span>
     </button>`).join("");
 }
 
@@ -973,10 +1233,22 @@ function deleteBlock(blockId) {
   }, "Conteúdo removido");
 }
 
+function makeOriginalAddition(type) {
+  const id = uid("original");
+  const sourceSelector = originalComponentSelectors[type];
+  const source = sourceSelector ? elements.originalPreview.contentDocument?.querySelector(sourceSelector) : null;
+  return {
+    id,
+    type,
+    exactSource: Boolean(source),
+    html: source ? serialiseOriginalSection(source, id) : originalBlockMarkup(type, id),
+  };
+}
+
 function addOriginalBlock(type) {
   if (!blockCatalog[type]) return;
   const screen = activeScreen();
-  const addition = { id: uid("original"), type };
+  const addition = makeOriginalAddition(type);
   const snapshot = historySnapshot();
   fidelityBucket("additions", screen.id)[addition.id] = addition;
   undoStack.push(snapshot);
@@ -986,7 +1258,7 @@ function addOriginalBlock(type) {
   refreshOriginalEditing();
   renderScreenList();
   elements.blockDialog.close();
-  showToast(`${blockCatalog[type].name} adicionado com o visual original`);
+  showToast(addition.exactSource ? `${blockCatalog[type].name} copiado do aplicativo real` : `${blockCatalog[type].name} adicionado como recurso de organização`);
 }
 
 function addBlock(type) {
@@ -1045,9 +1317,17 @@ function createScreenFromForm(form) {
   const name = String(data.get("name") || "Nova tela").trim();
   const role = String(data.get("role") || "student");
   const template = String(data.get("template") || "blank");
+  const navigationPlacement = String(data.get("navigationPlacement") || "new");
+  const navIcon = String(data.get("navIcon") || "more");
   commit(() => {
     const sourceScreenId = role === "coach" ? "coach-home" : role === "shared" ? "shared-login" : "student-home";
-    const screen = makeScreen(uid("screen"), name, role, [], { sourceScreenId, startBlank: true });
+    const screen = makeScreen(uid("screen"), name, role, [], {
+      sourceScreenId,
+      startBlank: true,
+      navigationPlacement,
+      navIcon,
+      showInNav: navigationPlacement !== "hidden" && role !== "shared",
+    });
     state.screens.push(screen);
     const templateTypes = {
       blank: [],
@@ -1057,8 +1337,8 @@ function createScreenFromForm(form) {
     };
     const additions = fidelityBucket("additions", screen.id);
     (templateTypes[template] || []).forEach((type) => {
-      const id = uid("original");
-      additions[id] = { id, type };
+      const addition = makeOriginalAddition(type);
+      additions[addition.id] = addition;
     });
     state.activeScreenId = screen.id;
     state.selectedBlockId = null;
@@ -1094,7 +1374,7 @@ function closePresentation() {
 }
 
 function selectedFrameSection() {
-  return frameSelection?.element?.closest("[data-creative-section-key]") || null;
+  return frameSelection?.section || frameSelection?.element?.closest?.("[data-creative-section-key]") || null;
 }
 
 function originalSectionLabel(section) {
@@ -1105,13 +1385,15 @@ function originalSectionLabel(section) {
 function serialiseOriginalSection(section, id) {
   const copy = section.cloneNode(true);
   copy.hidden = false;
-  ["id", "contenteditable", "spellcheck", "draggable", "data-creative-section-key", "data-creative-text-key", "data-creative-original-text", "data-creative-editable"].forEach((attribute) => copy.removeAttribute(attribute));
+  const editorAttributes = ["id", "contenteditable", "spellcheck", "draggable", "hidden", "data-creative-section-key", "data-creative-text-key", "data-creative-original-text", "data-creative-editable", "data-creative-original-parent-key", "data-creative-original-index", "data-creative-detached", "data-creative-source-group", "data-creative-group-key", "data-creative-emptied"];
+  editorAttributes.forEach((attribute) => copy.removeAttribute(attribute));
   copy.setAttribute("data-creative-added-id", id);
   copy.classList.add("creative-added-section");
   copy.classList.remove("is-creative-selected", "is-creative-dragging", "is-creative-drop");
+  copy.querySelectorAll(".creative-move-handle").forEach((node) => node.remove());
   copy.querySelectorAll("[id]").forEach((node) => node.removeAttribute("id"));
-  copy.querySelectorAll("[contenteditable], [spellcheck], [draggable], [data-creative-text-key], [data-creative-original-text], [data-creative-editable], [data-creative-section-key]").forEach((node) => {
-    ["contenteditable", "spellcheck", "draggable", "data-creative-text-key", "data-creative-original-text", "data-creative-editable", "data-creative-section-key"].forEach((attribute) => node.removeAttribute(attribute));
+  copy.querySelectorAll(editorAttributes.map((attribute) => `[${attribute}]`).join(",")).forEach((node) => {
+    editorAttributes.forEach((attribute) => node.removeAttribute(attribute));
     node.classList.remove("is-creative-selected", "is-creative-dragging", "is-creative-drop");
   });
   return copy.outerHTML;
@@ -1186,16 +1468,60 @@ function moveSelectedOriginalSection(delta) {
   const sections = frameSections(surface);
   const index = sections.indexOf(section);
   const target = sections[index + delta];
-  if (!target) return;
+  if (!target) {
+    showToast(delta < 0 ? "Esta seção já está no início." : "Esta seção já está no final.");
+    return;
+  }
   const snapshot = historySnapshot();
-  if (delta < 0) surface.insertBefore(section, target);
-  else surface.insertBefore(section, target.nextSibling);
+  const sectionKey = section.dataset.creativeSectionKey;
+  const moved = reorderFrameSections(surface, section, target, delta > 0);
+  if (!moved) {
+    showToast("A seção permaneceu na posição atual.");
+    return;
+  }
   persistFrameOrder(surface, activeScreen().id);
   undoStack.push(snapshot);
   redoStack = [];
   scheduleSave();
   renderHistoryControls();
+  refreshOriginalEditing();
+  reselectOriginalSection(surface, sectionKey);
   showToast(delta < 0 ? "Seção movida para cima" : "Seção movida para baixo");
+}
+
+function moveSelectedOriginalSectionToPosition(position) {
+  const section = selectedFrameSection();
+  const surface = elements.originalPreview.contentWindow?.vpCreativePreview?.getActiveSurface?.();
+  if (!section || !surface) return;
+  const sections = frameSections(surface);
+  const currentIndex = sections.indexOf(section);
+  let reordered = sections.filter((item) => item !== section);
+  if (position === "first") reordered.unshift(section);
+  else if (position === "last") reordered.push(section);
+  else {
+    const targetIndex = reordered.findIndex((item) => item.dataset.creativeSectionKey === position);
+    if (targetIndex < 0) {
+      showToast("Não foi possível localizar a posição escolhida.");
+      return;
+    }
+    reordered.splice(targetIndex, 0, section);
+  }
+  const nextIndex = reordered.indexOf(section);
+  if (currentIndex === nextIndex) {
+    showToast("Esta seção já está na posição escolhida.");
+    return;
+  }
+  const snapshot = historySnapshot();
+  const sectionKey = section.dataset.creativeSectionKey;
+  flattenFrameSections(surface, reordered);
+  persistFrameOrder(surface, activeScreen().id);
+  undoStack.push(snapshot);
+  redoStack = [];
+  scheduleSave();
+  renderHistoryControls();
+  refreshOriginalEditing();
+  reselectOriginalSection(surface, sectionKey);
+  showToast(position === "first" ? "Seção movida para o início" : position === "last" ? "Seção movida para o final" : "Seção posicionada no local escolhido");
 }
 
 function saveSelectedOriginalText() {
@@ -1280,6 +1606,9 @@ function generateChangeReport() {
     lines.push(`- Tipo: ${created ? "tela criada no modo criativo" : "tela existente"}`);
     lines.push(`- Perfil: ${roleNames[screen.role]}`);
     lines.push(`- Navegação: ${screen.showInNav ? `visível como "${screen.navLabel}"` : "oculta"}`);
+    lines.push(`- Tipo de acesso: ${navigationPlacementNames[screen.navigationPlacement] || "Sem atalho"}`);
+    lines.push(`- Formato da navegação: ${state.navigationModes?.[screen.role] === "bottom" ? "sempre inferior" : state.navigationModes?.[screen.role] === "sidebar" ? "sempre lateral" : "inferior no celular e lateral no desktop"}`);
+    if (screen.navigationPlacement === "new") lines.push(`- Ícone escolhido: ${screen.navIcon}`);
     if (!created && screen.baseline) {
       if (screen.name !== screen.baseline.name) lines.push(`- Nome da tela alterado: "${screen.baseline.name}" -> "${screen.name}"`);
       if (screen.navLabel !== screen.baseline.navLabel) lines.push(`- Rótulo da navegação alterado: "${screen.baseline.navLabel}" -> "${screen.navLabel}"`);
@@ -1307,7 +1636,7 @@ function generateChangeReport() {
     "",
     "1. Aplicar primeiro os textos, nomes de telas e rótulos de navegação aprovados.",
     "2. Reproduzir a ordem, remoção, duplicação e transferência das seções na estrutura real de cada tela.",
-    "3. Criar as novas rotas e telas registradas, preservando os componentes e padrões do aplicativo.",
+    "3. Criar as novas rotas, ícones e telas registradas, preservando os componentes e padrões do aplicativo.",
     "4. Revisar responsividade, acessibilidade, navegação e regras funcionais depois da migração.",
     "",
     "O relatório é uma especificação das decisões. A lógica, o banco de dados e as integrações continuam sendo implementados e testados na versão original.",
@@ -1325,23 +1654,7 @@ async function importProject(file) {
     const parsed = JSON.parse(await file.text());
     if (!Array.isArray(parsed.screens) || !parsed.screens.length) throw new Error("Projeto inválido");
     undoStack.push(historySnapshot());
-    const defaults = createDefaultProject();
-    state = {
-      ...defaults,
-      ...parsed,
-      schemaVersion: SCHEMA_VERSION,
-      fidelity: { ...defaults.fidelity, ...(parsed.fidelity || {}) },
-    };
-    state.screens = state.screens.map((screen) => ({
-      startBlank: false,
-      baseline: screen.baseline || {
-        name: screen.name,
-        navLabel: screen.navLabel,
-        role: screen.role,
-        showInNav: screen.showInNav,
-      },
-      ...screen,
-    }));
+    state = migrateProject(parsed);
     ensureValidSelection();
     redoStack = [];
     scheduleSave();
@@ -1382,10 +1695,16 @@ function wireEvents() {
     renderInspector();
   });
   window.addEventListener("message", (event) => {
-    if (event.origin !== window.location.origin || event.data?.type !== "vp-creative-preview-ready") return;
-    frameReady = true;
-    syncOriginalPreview();
-    renderInspector();
+    if (event.origin !== window.location.origin) return;
+    if (event.data?.type === "vp-creative-navigate" && event.data.screenId) {
+      selectScreen(event.data.screenId);
+      return;
+    }
+    if (event.data?.type === "vp-creative-preview-ready") {
+      frameReady = true;
+      syncOriginalPreview();
+      renderInspector();
+    }
   });
   document.querySelector("#new-screen-button").addEventListener("click", () => elements.screenDialog.showModal());
   document.querySelector("#add-block-button").addEventListener("click", () => elements.blockDialog.showModal());
@@ -1549,11 +1868,17 @@ function wireEvents() {
     const blockFieldInput = event.target.closest("[data-block-field]");
     const complexField = event.target.closest("[data-complex-field]");
     const screenFieldInput = event.target.closest("[data-screen-field]");
+    const navigationModeInput = event.target.closest("[data-role-navigation-mode]");
     const moveSelect = event.target.closest("[data-move-block]");
     const fidelityMoveSelect = event.target.closest("[data-fidelity-move-screen]");
+    const fidelityPosition = event.target.closest("[data-fidelity-position]");
 
     if (fidelityMoveSelect?.value) {
       moveSelectedOriginalSectionTo(fidelityMoveSelect.value);
+      return;
+    }
+    if (fidelityPosition?.value) {
+      moveSelectedOriginalSectionToPosition(fidelityPosition.value);
       return;
     }
 
@@ -1573,7 +1898,24 @@ function wireEvents() {
     if (screenFieldInput) {
       const field = screenFieldInput.dataset.screenField;
       const value = field === "showInNav" ? screenFieldInput.value === "true" : screenFieldInput.value;
-      commit(() => { activeScreen()[field] = value; }, "Configuração da tela atualizada");
+      commit(() => {
+        const screen = activeScreen();
+        screen[field] = value;
+        if (field === "navigationPlacement") screen.showInNav = value !== "hidden" && screen.role !== "shared";
+        if (field === "role") {
+          screen.showInNav = value !== "shared" && screen.navigationPlacement !== "hidden";
+          const matchingSource = state.screens.find((item) => item.role === value && item.id === item.sourceScreenId);
+          if (matchingSource) screen.sourceScreenId = matchingSource.id;
+        }
+      }, "Configuração da tela atualizada");
+      return;
+    }
+    if (navigationModeInput?.value) {
+      commit(() => {
+        state.navigationModes ||= { student: "responsive", coach: "responsive", shared: "responsive" };
+        state.navigationModes[activeScreen().role] = navigationModeInput.value;
+      }, "Formato da navegação atualizado");
+      return;
     }
     if (block && moveSelect?.value) {
       const origin = activeScreen();
@@ -1624,8 +1966,10 @@ function wireEvents() {
       }
       if (fidelityAction.dataset.fidelityAction === "duplicate") duplicateSelectedOriginalSection();
       if (fidelityAction.dataset.fidelityAction === "remove") removeSelectedOriginalSection();
+      if (fidelityAction.dataset.fidelityAction === "first") moveSelectedOriginalSectionToPosition("first");
       if (fidelityAction.dataset.fidelityAction === "up") moveSelectedOriginalSection(-1);
       if (fidelityAction.dataset.fidelityAction === "down") moveSelectedOriginalSection(1);
+      if (fidelityAction.dataset.fidelityAction === "last") moveSelectedOriginalSectionToPosition("last");
       return;
     }
     const option = event.target.closest("[data-set-option]");

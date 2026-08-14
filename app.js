@@ -1,4 +1,4 @@
-import { mountBodyMap, validateBodyMapCatalog } from "./body-map.js?v=23";
+import { mountBodyMap, validateBodyMapCatalog } from "./body-map.js?v=24";
 
 const icon = (name) => `<svg aria-hidden="true"><use href="#icon-${name}"></use></svg>`;
 
@@ -950,6 +950,26 @@ function initialiseCreativePreview() {
   if (params.get("creative") !== "1") return;
 
   document.documentElement.classList.add("creative-preview-runtime");
+  const creativeNavigationStyle = document.createElement("style");
+  creativeNavigationStyle.textContent = `
+    .workspace-shell.creative-navigation-bottom.is-active { display: block !important; }
+    .workspace-shell.creative-navigation-bottom .app-rail { display: none !important; }
+    .workspace-shell.creative-navigation-bottom .mobile-tabbar { position: fixed; right: 0; bottom: 0; left: 0; z-index: 40; display: grid !important; min-height: 72px; padding: 7px 8px; border-top: 1px solid var(--line); background: var(--surface); }
+    .workspace-shell.creative-navigation-bottom .workspace-content { padding-bottom: 100px !important; }
+    .workspace-shell.creative-navigation-sidebar .mobile-tabbar { display: none !important; }
+    @media (max-width: 900px) {
+      .workspace-shell.creative-navigation-sidebar.is-active { display: grid !important; grid-template-columns: 92px minmax(0, 1fr); }
+      .workspace-shell.creative-navigation-sidebar .app-rail { display: flex !important; width: 92px; padding: 16px 8px; }
+      .workspace-shell.creative-navigation-sidebar .rail-brand { width: 76px; height: 50px; }
+      .workspace-shell.creative-navigation-sidebar .rail-context,
+      .workspace-shell.creative-navigation-sidebar .rail-footer { display: none; }
+      .workspace-shell.creative-navigation-sidebar .rail-nav { margin-top: 18px; }
+      .workspace-shell.creative-navigation-sidebar .rail-nav button { min-height: 58px; display: grid; place-items: center; gap: 3px; padding: 5px; text-align: center; }
+      .workspace-shell.creative-navigation-sidebar .rail-nav button span { font-size: .58rem; }
+      .workspace-shell.creative-navigation-sidebar .workspace-content { padding-bottom: 28px; }
+    }
+  `;
+  document.head.append(creativeNavigationStyle);
   const screenRoutes = {
     "student-home": ["student", "home"],
     "student-agenda": ["student", "agenda"],
@@ -963,7 +983,35 @@ function initialiseCreativePreview() {
     "coach-reports": ["coach", "reports"],
   };
 
-  const showScreen = ({ screenId = "student-home", sourceScreenId = screenId, screenName = "" } = {}) => {
+  const setCreativeNavigation = ({ items = [], activeScreenId = "", mode = "responsive" } = {}) => {
+    workspaceShell.classList.toggle("creative-navigation-bottom", mode === "bottom");
+    workspaceShell.classList.toggle("creative-navigation-sidebar", mode === "sidebar");
+    if (!items.length) {
+      railNav.innerHTML = "";
+      mobileTabbar.innerHTML = "";
+      return;
+    }
+    const escapePreviewText = (value) => String(value || "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+    const allowedIcons = new Set(["home", "calendar", "workout", "chart", "user", "users", "more"]);
+    const markup = items.map((item) => {
+      const itemId = escapePreviewText(item.id);
+      const itemLabel = escapePreviewText(item.label);
+      const itemIcon = allowedIcons.has(item.icon) ? item.icon : "more";
+      return `
+      <button type="button" data-creative-screen-id="${itemId}" class="${item.id === activeScreenId ? "is-active" : ""}" aria-label="${itemLabel}" ${item.id === activeScreenId ? 'aria-current="page"' : ""}>
+        ${icon(itemIcon)}
+        <span>${itemLabel}</span>
+      </button>`;
+    }).join("");
+    railNav.innerHTML = markup;
+    mobileTabbar.innerHTML = markup;
+    mobileTabbar.style.gridTemplateColumns = `repeat(${Math.max(1, items.length)}, minmax(0, 1fr))`;
+    workspaceShell.querySelectorAll("[data-creative-screen-id]").forEach((button) => {
+      button.addEventListener("click", () => window.parent.postMessage({ type: "vp-creative-navigate", screenId: button.dataset.creativeScreenId }, window.location.origin));
+    });
+  };
+
+  const showScreen = ({ screenId = "student-home", sourceScreenId = screenId, screenName = "", navigation: creativeNavigation } = {}) => {
     const resolvedId = screenRoutes[sourceScreenId] ? sourceScreenId : "student-home";
     if (sourceScreenId === "shared-login") {
       setAccessRole("student", { syncQuery: false });
@@ -974,6 +1022,7 @@ function initialiseCreativePreview() {
     const [role, route] = screenRoutes[resolvedId];
     setAccessRole(role, { syncQuery: false });
     enterWorkspace(route);
+    setCreativeNavigation(creativeNavigation);
     if (screenId !== resolvedId && screenName) {
       document.querySelector("#page-overline").textContent = "TELA PERSONALIZADA";
       document.querySelector("#page-title").textContent = screenName;

@@ -1235,6 +1235,11 @@ textarea:focus-visible,
   color: var(--ink);
 }
 
+.inspector-actions button:disabled {
+  cursor: not-allowed;
+  opacity: .38;
+}
+
 .inspector-actions .danger-action,
 .screen-action.danger-action,
 .project-actions .danger-action {
@@ -1358,6 +1363,17 @@ textarea:focus-visible,
   color: var(--muted);
   font-size: .68rem;
   line-height: 1.35;
+}
+
+.block-library__origin {
+  width: max-content;
+  padding: 4px 6px;
+  border-radius: 5px;
+  color: var(--copper);
+  background: var(--copper-soft);
+  font-size: .52rem;
+  font-weight: 850;
+  letter-spacing: .08em;
 }
 
 .dialog-primary {
