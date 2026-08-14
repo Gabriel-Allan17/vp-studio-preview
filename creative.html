@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#202522" />
+    <meta name="description" content="Editor visual do aplicativo Vinicius Pontes Studio." />
+    <link rel="icon" href="assets/icons/icon-192.png" />
+    <link rel="stylesheet" href="creative.css?v=1" />
+    <title>VP Studio | Modo Criativo</title>
+  </head>
+  <body>
+    <noscript>Ative o JavaScript para usar o Modo Criativo.</noscript>
+
+    <main class="creative-app" id="creative-app">
+      <header class="creative-header">
+        <div class="creative-brand">
+          <img src="assets/brand/vp-logo-gradient.png" alt="Vinicius Pontes Studio" />
+          <div>
+            <span>MODO CRIATIVO</span>
+            <strong id="project-title">VP Studio</strong>
+          </div>
+        </div>
+
+        <div class="save-state" id="save-state" role="status" aria-live="polite">
+          <i aria-hidden="true"></i>
+          <span>Alterações salvas</span>
+        </div>
+
+        <div class="creative-header__actions">
+          <button class="header-action" type="button" id="undo-button" aria-label="Desfazer" disabled>
+            <span aria-hidden="true">↶</span><b>Desfazer</b>
+          </button>
+          <button class="header-action" type="button" id="redo-button" aria-label="Refazer" disabled>
+            <span aria-hidden="true">↷</span><b>Refazer</b>
+          </button>
+          <button class="header-action" type="button" id="preview-button">
+            <span aria-hidden="true">◉</span><b>Apresentar</b>
+          </button>
+          <button class="header-action header-action--primary" type="button" id="project-button">
+            <span aria-hidden="true">•••</span><b>Projeto</b>
+          </button>
+        </div>
+      </header>
+
+      <section class="creative-workspace">
+        <aside class="screens-panel editor-panel is-mobile-active" id="screens-panel" aria-label="Telas do aplicativo">
+          <header class="panel-heading">
+            <div>
+              <span>ESTRUTURA</span>
+              <h1>Telas</h1>
+            </div>
+            <button class="square-button" type="button" id="new-screen-button" aria-label="Criar tela">+</button>
+          </header>
+
+          <label class="screen-search">
+            <span aria-hidden="true">⌕</span>
+            <input type="search" id="screen-search" placeholder="Buscar tela" autocomplete="off" />
+          </label>
+
+          <div class="role-filter" role="group" aria-label="Filtrar telas por perfil">
+            <button class="is-active" type="button" data-role-filter="all" aria-pressed="true">Todas</button>
+            <button type="button" data-role-filter="student" aria-pressed="false">Aluno</button>
+            <button type="button" data-role-filter="coach" aria-pressed="false">Professor</button>
+          </div>
+
+          <div class="screen-list" id="screen-list"></div>
+
+          <footer class="screens-panel__footer">
+            <button type="button" id="duplicate-screen-button">Duplicar tela atual</button>
+            <button type="button" id="manage-versions-button">Versões da reunião</button>
+          </footer>
+        </aside>
+
+        <section class="canvas-panel" id="canvas-panel" aria-label="Prévia editável">
+          <header class="canvas-toolbar">
+            <div class="current-screen-label">
+              <span id="current-screen-role">ALUNO</span>
+              <strong id="current-screen-name">Início</strong>
+            </div>
+
+            <div class="device-switcher" role="group" aria-label="Tamanho da prévia">
+              <button class="is-active" type="button" data-device="mobile" aria-pressed="true">Celular</button>
+              <button type="button" data-device="tablet" aria-pressed="false">Tablet</button>
+              <button type="button" data-device="desktop" aria-pressed="false">Desktop</button>
+            </div>
+
+            <label class="zoom-control">
+              <span>Zoom</span>
+              <input type="range" id="zoom-control" min="70" max="110" step="5" value="90" />
+              <output id="zoom-output">90%</output>
+            </label>
+          </header>
+
+          <div class="canvas-stage" id="canvas-stage" data-device="mobile">
+            <div class="device-shell" id="device-shell">
+              <div class="device-camera" aria-hidden="true"></div>
+              <article class="app-preview" id="app-preview" aria-label="Tela editável do aplicativo">
+                <header class="preview-header">
+                  <img src="assets/brand/vp-logo-gradient.png" alt="VP Studio" />
+                  <div>
+                    <span id="preview-profile">ÁREA DO ALUNO</span>
+                    <strong id="preview-screen-title">Início</strong>
+                  </div>
+                  <button type="button" aria-label="Notificações">•</button>
+                </header>
+                <div class="preview-content" id="preview-content"></div>
+                <nav class="preview-navigation" id="preview-navigation" aria-label="Navegação simulada"></nav>
+              </article>
+            </div>
+
+            <button class="canvas-add-button" type="button" id="add-block-button">
+              <span aria-hidden="true">+</span>
+              Adicionar conteúdo
+            </button>
+          </div>
+        </section>
+
+        <aside class="inspector-panel editor-panel" id="inspector-panel" aria-label="Propriedades">
+          <header class="panel-heading">
+            <div>
+              <span>EDIÇÃO</span>
+              <h2>Propriedades</h2>
+            </div>
+          </header>
+
+          <div class="inspector-tabs" role="tablist" aria-label="Seções das propriedades">
+            <button class="is-active" type="button" role="tab" data-inspector-tab="content" aria-selected="true">Conteúdo</button>
+            <button type="button" role="tab" data-inspector-tab="style" aria-selected="false">Visual</button>
+            <button type="button" role="tab" data-inspector-tab="screen" aria-selected="false">Tela</button>
+          </div>
+
+          <div class="inspector-body" id="inspector-body"></div>
+        </aside>
+      </section>
+
+      <nav class="mobile-editor-nav" aria-label="Áreas do editor">
+        <button class="is-active" type="button" data-mobile-panel="screens-panel"><span>Telas</span></button>
+        <button type="button" data-mobile-panel="canvas-panel"><span>Prévia</span></button>
+        <button type="button" data-mobile-panel="inspector-panel"><span>Ajustes</span></button>
+      </nav>
+    </main>
+
+    <dialog class="creative-dialog" id="block-dialog">
+      <form method="dialog" class="dialog-surface">
+        <header>
+          <div><span>BIBLIOTECA</span><h2>Adicionar conteúdo</h2></div>
+          <button type="submit" aria-label="Fechar">×</button>
+        </header>
+        <p>Escolha um bloco. Depois você poderá alterar o conteúdo, o tamanho e a posição.</p>
+        <div class="block-library" id="block-library"></div>
+      </form>
+    </dialog>
+
+    <dialog class="creative-dialog" id="screen-dialog">
+      <form class="dialog-surface dialog-surface--compact" id="screen-form">
+        <header>
+          <div><span>NOVA ESTRUTURA</span><h2>Criar tela</h2></div>
+          <button type="button" data-close-dialog="screen-dialog" aria-label="Fechar">×</button>
+        </header>
+        <label class="editor-field"><span>Nome da tela</span><input name="name" required maxlength="42" placeholder="Ex.: Histórico de avaliações" /></label>
+        <label class="editor-field"><span>Perfil</span><select name="role"><option value="student">Aluno</option><option value="coach">Professor</option><option value="shared">Compartilhada</option></select></label>
+        <label class="editor-field"><span>Começar com</span><select name="template"><option value="blank">Tela em branco</option><option value="dashboard">Resumo com indicadores</option><option value="list">Lista de registros</option><option value="form">Formulário</option></select></label>
+        <button class="dialog-primary" type="submit">Criar e abrir tela</button>
+      </form>
+    </dialog>
+
+    <dialog class="creative-dialog" id="project-dialog">
+      <div class="dialog-surface project-dialog-surface">
+        <header>
+          <div><span>PROJETO</span><h2>Reunião e versões</h2></div>
+          <button type="button" data-close-dialog="project-dialog" aria-label="Fechar">×</button>
+        </header>
+
+        <section class="project-section">
+          <h3>Registrar decisão</h3>
+          <p>Crie um ponto de retorno antes de testar uma nova organização.</p>
+          <form class="version-form" id="version-form">
+            <input name="label" maxlength="50" placeholder="Ex.: Login aprovado pelo Vinicius" required />
+            <button type="submit">Salvar versão</button>
+          </form>
+        </section>
+
+        <section class="project-section">
+          <div class="project-section__heading"><h3>Versões salvas</h3><span id="version-count">0</span></div>
+          <div class="version-list" id="version-list"></div>
+        </section>
+
+        <section class="project-section">
+          <h3>Levar ou recuperar o projeto</h3>
+          <div class="project-actions">
+            <button type="button" id="export-button">Exportar arquivo</button>
+            <button type="button" id="import-button">Importar arquivo</button>
+            <button class="danger-action" type="button" id="reset-button">Restaurar modelo inicial</button>
+          </div>
+          <input type="file" id="import-file" accept="application/json,.json" hidden />
+        </section>
+      </div>
+    </dialog>
+
+    <div class="presentation-mode" id="presentation-mode" hidden>
+      <header>
+        <span>PRÉVIA PARA APRESENTAÇÃO</span>
+        <button type="button" id="close-preview-button">Voltar ao editor</button>
+      </header>
+      <div id="presentation-mount"></div>
+    </div>
+
+    <div class="creative-toast" id="creative-toast" role="status" aria-live="polite"></div>
+    <script type="module" src="creative.js?v=1"></script>
+  </body>
+</html>

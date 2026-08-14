@@ -10,9 +10,9 @@
     <meta name="apple-mobile-web-app-title" content="VP Studio" />
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="assets/icons/icon-192.png" />
-    <link rel="stylesheet" href="styles.css?v=20" />
-    <link rel="stylesheet" href="experience-tokens.css?v=20" />
-    <link rel="stylesheet" href="login-options.css?v=20" id="experience-picker-styles" />
+    <link rel="stylesheet" href="styles.css?v=21" />
+    <link rel="stylesheet" href="experience-tokens.css?v=21" />
+    <link rel="stylesheet" href="login-options.css?v=21" id="experience-picker-styles" />
     <title>VP Studio</title>
   </head>
   <body>
@@ -308,7 +308,7 @@
               <span>VINICIUS PONTES<small>STUDIO</small></span>
             </a>
             <div class="login-panel__controls">
-              <button class="icon-control" type="button" data-open-experience aria-label="Trocar visual">
+              <button class="icon-control" type="button" data-open-experience aria-label="Trocar visual" hidden>
                 <svg><use href="#icon-palette"></use></svg>
               </button>
               <button class="icon-control theme-control" type="button" data-theme-toggle aria-label="Ativar tema escuro">
@@ -1046,7 +1046,7 @@
           <span><strong>Meu perfil</strong><small>Dados, preferências e privacidade</small></span>
           <svg><use href="#icon-arrow"></use></svg>
         </button>
-        <button type="button" data-open-experience>
+        <button type="button" data-open-experience hidden>
           <svg><use href="#icon-palette"></use></svg>
           <span><strong>Trocar visual</strong><small id="account-experience">Atlântico selecionado</small></span>
           <svg><use href="#icon-arrow"></use></svg>
@@ -1059,6 +1059,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="app.js?v=20"></script>
+    <script type="module" src="app.js?v=21"></script>
   </body>
 </html>
