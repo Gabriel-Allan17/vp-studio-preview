@@ -1,4 +1,4 @@
-const CACHE_NAME = "vp-studio-homologacao-v24";
+const CACHE_NAME = "vp-studio-homologacao-v26";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -10,7 +10,12 @@ const APP_SHELL = [
   "./experience-tokens.css?v=24",
   "./login-options.css",
   "./login-options.css?v=24",
-  "./app.js?v=24",
+  "./app.js?v=26",
+  "./studio.css?v=26",
+  "./modules/studio.js",
+  "./modules/domain.js",
+  "./modules/store.js",
+  "./modules/tabular-export.js",
   "./body-map.js?v=24",
   "./manifest.webmanifest",
   "./offline.html",
@@ -36,13 +41,16 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+      .then((keys) => Promise.all(keys.filter((key) => key.startsWith('vp-studio-') && key !== CACHE_NAME).map((key) => caches.delete(key))))
       .then(() => self.clients.claim()),
   );
 });
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+  const url = new URL(event.request.url);
+  if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') return;
+  if (url.origin !== self.location.origin || url.pathname.includes('/rest/') || url.pathname.includes('/auth/') || url.pathname.includes('/storage/')) return;
 
   if (event.request.mode === "navigate") {
     event.respondWith(

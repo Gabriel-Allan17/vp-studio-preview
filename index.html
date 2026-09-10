@@ -12,6 +12,7 @@
     <link rel="apple-touch-icon" href="assets/icons/icon-192.png" />
     <link rel="stylesheet" href="styles.css?v=24" />
     <link rel="stylesheet" href="experience-tokens.css?v=24" />
+    <link rel="stylesheet" href="studio.css?v=26" />
     <link rel="stylesheet" href="login-options.css?v=24" id="experience-picker-styles" />
     <title>VP Studio</title>
   </head>
@@ -363,17 +364,13 @@
                   <button type="button" id="password-toggle" aria-label="Mostrar senha">Mostrar</button>
                 </span>
               </label>
-              <div class="login-help">
-                <label><input id="remember-profile" name="rememberProfile" type="checkbox" checked /> <span>Lembrar meu perfil neste aparelho</span></label>
-                <button type="button" class="text-button" data-toast="Confira o e-mail cadastrado para recuperar sua senha.">Esqueci a senha</button>
-              </div>
               <button class="button button--primary button--full" type="submit">
                 Entrar
                 <svg><use href="#icon-arrow"></use></svg>
               </button>
             </form>
 
-            <div class="login-separator"><span>PRIMEIRO ACESSO</span></div>
+            <button type="button" class="text-button studio-forgot" data-toast="A recuperação por e-mail será ativada com a autenticação online. Este acesso usa dados de demonstração.">Esqueci a senha</button>
             <button class="button button--secondary button--full" type="button" data-route="account">
               Criar minha conta
             </button>
@@ -775,8 +772,8 @@
                   <svg><use href="#icon-back"></use></svg>
                 </button>
                 <div>
-                  <span class="overline">CHECK-IN DIÁRIO</span>
-                  <h2>Seu bem-estar</h2>
+                  <span class="overline">QUESTIONÁRIO DIÁRIO</span>
+                  <h2>Bem-Estar</h2>
                 </div>
                 <span class="flow-step" id="wellness-step-label">1 de 9</span>
               </header>
@@ -1059,6 +1056,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="app.js?v=24"></script>
+    <script type="module" src="app.js?v=26"></script>
   </body>
 </html>

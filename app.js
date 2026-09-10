@@ -1,4 +1,7 @@
 import { mountBodyMap, validateBodyMapCatalog } from "./body-map.js?v=24";
+import { createStudio } from "./modules/studio.js";
+import { SYMPTOMS, escapeHTML } from "./modules/domain.js";
+let studio = null;
 
 const icon = (name) => `<svg aria-hidden="true"><use href="#icon-${name}"></use></svg>`;
 
@@ -25,7 +28,13 @@ const pageMeta = {
   "student-workout": ["TREINO ATUAL", "Meu treino"],
   "student-evolution": ["HISTÓRICO", "Evolução"],
   "student-profile": ["CONTA", "Meu perfil"],
-  wellness: ["CHECK-IN DIÁRIO", "Bem-estar"],
+  wellness: ["QUESTIONÁRIO DIÁRIO", "Bem-estar"],
+  "student-intake": ["SAÚDE E OBJETIVOS", "Meu formulário"],
+  "student-finance": ["MENSALIDADES", "Financeiro"],
+  "student-settings": ["PREFERÊNCIAS", "Configurações"],
+  "student-ranking": ["STUDIO", "Ranking"],
+  "coach-student-profile": ["ACOMPANHAMENTO", "Perfil do aluno"],
+  "coach-catalog": ["EXERCÍCIOS", "Base de exercícios"],
   "coach-home": ["GESTÃO DO STUDIO", "Início"],
   "coach-students": ["ACOMPANHAMENTO", "Alunos"],
   "coach-agenda": ["GESTÃO DE HORÁRIOS", "Agenda"],
@@ -119,7 +128,7 @@ const wellnessDefinition = [
     kind: "psr",
     overline: "PSR",
     title: "Como você avalia sua recuperação?",
-    helper: "A Percepção Subjetiva de Recuperação deve ser respondida antes do treino.",
+    helper: "A PSR registra como você se recuperou do último treino.",
   },
   {
     id: "bodyMap",
@@ -135,8 +144,9 @@ const wellnessDefinition = [
     overline: "CICLO MENSTRUAL",
     title: "Deseja registrar informações do seu ciclo?",
     helper: "Opcional. Registre apenas se quiser acompanhar seu ciclo.",
-    conditional: () => state.profileSex === "female",
+    conditional: () => state.trackCycle ?? state.profileSex === "female",
   },
+  { id: "symptoms48h", kind: "symptoms", overline: "SAÚDE HOJE", title: "Teve algum destes sintomas nas últimas 48 horas?", helper: "Informe o que percebeu. Esse registro não é um diagnóstico." },
 ];
 
 const persistedTodayCheckin = todayCheckin();
@@ -407,6 +417,7 @@ function setRoute(route, options = {}) {
   workspaceShell.classList.toggle("is-wellness", view === "wellness");
   updatePageHeader(view);
   updateNavigationState();
+  studio?.render(view);
 
   if (view === "wellness" && options.resetWellness !== false) {
     state.wellnessIndex = 0;
@@ -445,10 +456,12 @@ function enterWorkspace(initialRoute = "home") {
   renderNavigation();
   updateCheckinCard();
   setRoute(initialRoute, { instant: true });
+  studio?.onEnter();
   window.scrollTo({ top: 0, behavior: "auto" });
 }
 
 function logout() {
+  localStorage.removeItem("vp-demo-session-role");
   if (accountDialog.open) accountDialog.close();
   loginPassword.type = "password";
   passwordToggle.textContent = "Mostrar";
@@ -529,10 +542,6 @@ function wellnessPsrMarkup(step) {
             <span>${label}</span>
           </button>`).join("")}
       </div>
-      <details class="scale-explanation">
-        <summary>O que é PSR?</summary>
-        <p>A PSR registra como você percebe sua recuperação antes do treino. Ela não substitui avaliação de saúde ou diagnóstico.</p>
-      </details>
     </div>`;
 }
 
@@ -555,17 +564,11 @@ function wellnessCycleMarkup(step) {
               ${["Ausente", "Leve", "Moderado", "Intenso"].map((label, index) => `<button type="button" data-cycle-flow="${index}" class="${cycle.flow === index ? "is-selected" : ""}">${label}</button>`).join("")}
             </div>
           </label>
-          <label>
-            <span>Dor menstrual</span>
-            <div class="cycle-levels cycle-levels--pain" role="group">
-              ${["Nenhuma", "Leve", "Moderada", "Forte"].map((label, index) => `<button type="button" data-cycle-pain="${index}" class="${cycle.pain === index ? "is-selected" : ""}">${label}</button>`).join("")}
-            </div>
-          </label>
           <fieldset>
             <legend>Sintomas percebidos</legend>
             ${["Cólica", "Dor lombar", "Inchaço", "Dor de cabeça", "Sensibilidade nas mamas"].map((label) => `<label><input type="checkbox" value="${label}" data-cycle-symptom ${cycle.symptoms.includes(label) ? "checked" : ""} /><span>${label}</span></label>`).join("")}
           </fieldset>
-          <label class="field"><span>Observação opcional</span><textarea rows="3" data-cycle-note placeholder="Algo que o professor deva considerar?">${cycle.note || ""}</textarea></label>
+          <label class="field"><span>Observação opcional</span><textarea rows="3" data-cycle-note placeholder="Algo que o professor deva considerar?">${escapeHTML(cycle.note || "")}</textarea></label>
         </section>` : ""}
     </div>`;
 }
@@ -580,8 +583,9 @@ function stepIsAnswered(step) {
     const cycle = state.wellnessAnswers.cycle;
     if (!cycle || cycle.enabled === null) return false;
     if (cycle.enabled === false) return true;
-    return cycle.flow !== null && cycle.pain !== null;
+    return cycle.flow !== null;
   }
+  if (step.kind === "symptoms") return Array.isArray(state.wellnessAnswers.symptoms48h);
   return true;
 }
 
@@ -686,16 +690,25 @@ function renderWellness() {
   } else if (step.kind === "cycle") {
     stage.innerHTML = wellnessCycleMarkup(step);
     wireCycleStep(stage);
+  } else if (step.kind === "symptoms") {
+    stage.innerHTML = `<div class="wellness-question"><span class="overline">${step.overline}</span><h3 tabindex="-1">${step.title}</h3><p>${step.helper}</p><fieldset class="studio-checkboxes"><legend>Sintomas percebidos</legend>${SYMPTOMS.map(label=>`<label><input type="checkbox" data-recent-symptom value="${label}" ${state.wellnessAnswers.symptoms48h?.includes(label)?'checked':''}> ${label}</label>`).join('')}</fieldset><button type="button" class="button button--secondary" id="no-recent-symptoms">Não tive nenhum destes sintomas</button></div>`;
+    stage.querySelectorAll('[data-recent-symptom]').forEach(input=>input.addEventListener('change',()=>{state.wellnessAnswers.symptoms48h=[...stage.querySelectorAll('[data-recent-symptom]:checked')].map(input=>input.value);next.disabled=false;}));
+    stage.querySelector('#no-recent-symptoms').addEventListener('click',()=>{state.wellnessAnswers.symptoms48h=[];renderWellness();});
   }
 
   const lastStep = state.wellnessIndex === steps.length - 1;
   next.disabled = !stepIsAnswered(step);
   next.innerHTML = lastStep
-    ? `Salvar check-in ${icon("check")}`
+    ? `Salvar questionário ${icon("check")}`
     : `Continuar ${icon("arrow")}`;
 }
 
-function saveWellnessCheckin() {
+async function saveWellnessCheckin() {
+  if (studio) {
+    const next = document.querySelector('#wellness-next'); next.disabled = true;
+    try { await studio.saveWellness(state.wellnessAnswers); } catch(error) { showToast(error.message); next.disabled = false; }
+    return;
+  }
   const history = readWellnessHistory();
   const updatedAt = new Date().toISOString();
   const today = localDayKey(updatedAt);
@@ -720,6 +733,7 @@ function saveWellnessCheckin() {
 }
 
 function updateCheckinCard() {
+  if (studio) return;
   const card = document.querySelector("#wellness-hero");
   if (!card) return;
   const completedDate = state.checkinCompletedAt ? new Date(state.checkinCompletedAt) : null;
@@ -814,8 +828,8 @@ function wireStaticControls() {
 
   document.querySelector("#login-form").addEventListener("submit", (event) => {
     event.preventDefault();
-    if (rememberProfile.checked) localStorage.setItem("vp-remembered-role", state.role);
-    else localStorage.removeItem("vp-remembered-role");
+    localStorage.setItem("vp-remembered-role", state.role);
+    localStorage.setItem("vp-demo-session-role", state.role);
     enterWorkspace("home");
   });
 
@@ -869,9 +883,14 @@ function wireStaticControls() {
     renderWellness();
   });
 
-  document.querySelector("#account-form").addEventListener("submit", (event) => {
+  document.querySelector("#account-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
+    if (studio) {
+      try { await studio.createDemoStudent(formData); }
+      catch (error) { showToast(error.message); }
+      return;
+    }
     const selectedProfileSex = formData.get("profileSex");
     state.profileSex = selectedProfileSex === "male" ? "male" : "female";
     localStorage.setItem("vp-demo-profile-sex", state.profileSex);
@@ -1055,4 +1074,11 @@ setAccessRole(
 wireStaticControls();
 setupPwa();
 runDiagnostics();
+if (new URLSearchParams(location.search).get('creative') !== '1') {
+  try {
+    studio = await createStudio({ state, setRoute, showToast, enterWorkspace, setAccessRole });
+    const resumed = localStorage.getItem('vp-demo-session-role');
+    if (resumed === 'student' || resumed === 'coach') { setAccessRole(resumed); enterWorkspace('home'); }
+  } catch(error) { showToast('Não foi possível abrir os dados de teste neste navegador. ' + error.message); }
+}
 initialiseCreativePreview();
